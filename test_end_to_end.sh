@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+
 export PATH=/usr/local/go/bin:$PATH
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -97,10 +99,31 @@ NETPROB_AGENT_NAME=sg-01 NETPROB_AGENT_REGION=test-singapore NETPROB_GEOIP_URL= 
   "$NETPROB_E2E_BINARY" -mode agent > /tmp/sg-agent.log 2>&1 &
 echo $! > "$SG_PID_FILE"
 
-sleep 2
-AGENTS_RESP=$(api_curl -fsS "$BASE_URL/api/agents")
-JKT_ID=$(echo "$AGENTS_RESP" | python3 -c "import sys,json; print(next(a['id'] for a in json.load(sys.stdin) if a['hostname'] == 'jkt-01'))")
-SG_ID=$(echo "$AGENTS_RESP" | python3 -c "import sys,json; print(next(a['id'] for a in json.load(sys.stdin) if a['hostname'] == 'sg-01'))")
+echo "=== Waiting for both agents to register ==="
+AGENT_DEADLINE=$((SECONDS + 30))
+while true; do
+  AGENTS_RESP=$(api_curl -fsS "$BASE_URL/api/agents")
+  if AGENT_IDS=$(echo "$AGENTS_RESP" | python3 -c '
+import sys, json
+agents = json.load(sys.stdin)
+ids = {agent["hostname"]: agent["id"] for agent in agents}
+if "jkt-01" not in ids or "sg-01" not in ids:
+    raise SystemExit(1)
+print(ids["jkt-01"], ids["sg-01"])
+'); then
+    read -r JKT_ID SG_ID <<< "$AGENT_IDS"
+    break
+  fi
+  if (( SECONDS >= AGENT_DEADLINE )); then
+    echo "timed out waiting for both agents: $AGENTS_RESP" >&2
+    echo "JKT agent log:" >&2
+    cat /tmp/jkt-agent.log >&2
+    echo "SG agent log:" >&2
+    cat /tmp/sg-agent.log >&2
+    exit 1
+  fi
+  sleep 1
+done
 if [ "$JKT_ID" = "$SG_ID" ]; then
   echo "shared enrollment token resolved both instances to the same agent" >&2
   exit 1
