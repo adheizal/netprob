@@ -83,8 +83,8 @@ jobs:
         env:
           VERSION: ${{ needs.metadata.outputs.version }}
         run: |
-          ./dist/netprob-server-linux-amd64 -version | grep -F "version=$VERSION"
-          ./dist/netprob-agent-linux-amd64 -version | grep -F "version=$VERSION"
+          ./dist/netprob-server-linux-amd64 -version | grep -F "netprob $VERSION "
+          ./dist/netprob-agent-linux-amd64 -version | grep -F "netprob $VERSION "
           if ldd dist/netprob-agent-linux-amd64 >/dev/null 2>&1; then
             echo "Agent binary unexpectedly uses shared libraries" >&2
             exit 1
