@@ -1,0 +1,190 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  metadata:
+    name: Prepare release metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      commit: ${{ steps.release.outputs.commit }}
+      build_date: ${{ steps.release.outputs.build_date }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+
+    steps:
+      - name: Validate tag and derive metadata
+        id: release
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag must be semantic versioned, for example v0.2.0 or v0.2.0-rc.1" >&2
+            exit 1
+          fi
+
+          version="${TAG#v}"
+          prerelease=false
+          if [[ "$version" == *-* ]]; then
+            prerelease=true
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "commit=${COMMIT_SHA:0:12}" >> "$GITHUB_OUTPUT"
+          echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+  binaries:
+    name: Build release binaries
+    needs: metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build binaries
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+          COMMIT: ${{ needs.metadata.outputs.commit }}
+          BUILD_DATE: ${{ needs.metadata.outputs.build_date }}
+        run: make release-binaries VERSION="$VERSION" COMMIT="$COMMIT" BUILD_DATE="$BUILD_DATE"
+
+      - name: Verify binary metadata and linkage
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          ./dist/netprob-server-linux-amd64 -version | grep -F "version=$VERSION"
+          ./dist/netprob-agent-linux-amd64 -version | grep -F "version=$VERSION"
+          if ldd dist/netprob-agent-linux-amd64 >/dev/null 2>&1; then
+            echo "Agent binary unexpectedly uses shared libraries" >&2
+            exit 1
+          fi
+
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum netprob-* > SHA256SUMS
+
+      - name: Upload release binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: netprob-release-${{ needs.metadata.outputs.version }}
+          path: |
+            dist/netprob-server-linux-amd64
+            dist/netprob-agent-linux-amd64
+            dist/netprob-agent-linux-arm64
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+
+  container:
+    name: Publish container image
+    needs: metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate container tags
+        id: image
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/netprob
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ needs.metadata.outputs.prerelease == 'false' }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.image.outputs.tags }}
+          build-args: |
+            VERSION=${{ needs.metadata.outputs.version }}
+            COMMIT=${{ needs.metadata.outputs.commit }}
+            BUILD_DATE=${{ needs.metadata.outputs.build_date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+
+  publish:
+    name: Publish GitHub Release
+    needs:
+      - metadata
+      - binaries
+      - container
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release binaries
+        uses: actions/download-artifact@v7
+        with:
+          name: netprob-release-${{ needs.metadata.outputs.version }}
+          path: dist
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: NetProb ${{ github.ref_name }}
+          prerelease: ${{ needs.metadata.outputs.prerelease }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/netprob-server-linux-amd64
+            dist/netprob-agent-linux-amd64
+            dist/netprob-agent-linux-arm64
+            dist/SHA256SUMS

@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Check Go formatting
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l $(find . -name '*.go' -not -path './web/*'))"
+          if [[ -n "$unformatted" ]]; then
+            echo "The following Go files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Test frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+      - name: Synchronize embedded frontend
+        run: rsync -a --delete web/dist/ internal/webui/dist/
+
+      - name: Test backend with race detector
+        run: go test -race ./...
+
+      - name: Vet backend
+        run: go vet ./...
+
+      - name: Verify distributable agents
+        run: |
+          make verify-agent-linux-amd64 VERSION=ci
+          make agent-linux-arm64 VERSION=ci
+          CGO_ENABLED=0 go test -tags agentonly ./cmd/netprob
+
+      - name: Install end-to-end dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mtr-tiny iputils-ping
+
+      - name: Build end-to-end binary
+        run: make build VERSION=ci
+
+      - name: Run end-to-end test
+        env:
+          NETPROB_PORT: "18080"
+          NETPROB_E2E_WAIT_SECONDS: "10"
+        run: ./test_end_to_end.sh

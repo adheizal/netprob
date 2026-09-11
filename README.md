@@ -55,6 +55,41 @@ timestamp. Inspect them with:
 docker run --rm netprob:0.1.0 -version
 ```
 
+### Automated GitHub Release
+
+Every push and pull request to `main` runs frontend lint/build, Go formatting,
+race tests, vet, static agent checks, and the end-to-end test. A semantic version
+tag publishes the release binaries and a multi-architecture container image:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The workflow creates a GitHub Release containing the controller and agent
+binaries plus `SHA256SUMS`. It also publishes `linux/amd64` and `linux/arm64`
+images to:
+
+```text
+ghcr.io/adheizal/netprob:0.2.0
+ghcr.io/adheizal/netprob:0.2
+ghcr.io/adheizal/netprob:latest
+```
+
+Pull and run a published controller image with:
+
+```bash
+docker pull ghcr.io/adheizal/netprob:0.2.0
+docker run -d --name netprob \
+  -p 18080:8080 \
+  -v netprob-data:/var/lib/netprob \
+  ghcr.io/adheizal/netprob:0.2.0
+```
+
+Prerelease tags such as `v0.2.0-rc.1` are marked as prereleases and do not move
+the `latest` image tag. GHCR publishing uses the repository's built-in
+`GITHUB_TOKEN`; no registry password is required.
+
 `VERSION` should be set explicitly for a release. When omitted, the Makefile
 uses `git describe` and falls back to `dev` outside a Git checkout. A configured
 YAML `agent.version` remains an explicit override; otherwise agents report the

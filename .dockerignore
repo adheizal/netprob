@@ -1,8 +1,12 @@
 .git
+.github
 .env
+.env.*
 bin
 dist
 data
 *.db
+*.log
 web/node_modules
 web/dist
+internal/webui/dist
