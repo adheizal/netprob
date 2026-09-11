@@ -1,0 +1,185 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "VictoriaMetrics / Prometheus",
+      "description": "Prometheus-compatible datasource that contains NetProb metrics",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "NetProb controller inventory, agent health, ping quality, and MTR summaries.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "netprob_controller_agents_online", "legendFormat": "Online", "range": true, "refId": "A" }],
+      "title": "Agents Online",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "id": 2,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "netprob_controller_agents", "legendFormat": "Total", "range": true, "refId": "A" }],
+      "title": "Total Agents",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "id": 3,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "netprob_controller_links", "legendFormat": "Links", "range": true, "refId": "A" }],
+      "title": "Links",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "id": 4,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "netprob_controller_directions", "legendFormat": "Directions", "range": true, "refId": "A" }],
+      "title": "Directions",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [], "max": 100, "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 99.9 }] }, "unit": "percent" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "id": 5,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "100 * avg(netprob_probe_success{link=~\"$link\",source=~\"$source\",destination=~\"$destination\"})", "legendFormat": "Success", "range": true, "refId": "A" }],
+      "title": "Latest Probe Success",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "id": 6,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "netprob_controller_uptime_seconds", "legendFormat": "Uptime", "range": true, "refId": "A" }],
+      "title": "Controller Uptime",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 3, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": true, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 7,
+      "options": { "legend": { "calcs": ["lastNotNull", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "editorMode": "code", "expr": "netprob_ping_rtt_avg_ms{link=~\"$link\",source=~\"$source\",destination=~\"$destination\",source_region=~\"$region\",source_provider=~\"$provider\"}", "legendFormat": "{{source}} → {{destination}}", "range": true, "refId": "A" }],
+      "title": "Ping Average RTT",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 3, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": true, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } }, "mappings": [], "max": 100, "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] }, "unit": "percent" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "id": 8,
+      "options": { "legend": { "calcs": ["lastNotNull", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "editorMode": "code", "expr": "netprob_ping_packet_loss_percent{link=~\"$link\",source=~\"$source\",destination=~\"$destination\",source_region=~\"$region\",source_provider=~\"$provider\"}", "legendFormat": "{{source}} → {{destination}}", "range": true, "refId": "A" }],
+      "title": "Ping Packet Loss",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 3, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": true, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 12 },
+      "id": 9,
+      "options": { "legend": { "calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "editorMode": "code", "expr": "netprob_ping_jitter_ms{link=~\"$link\",source=~\"$source\",destination=~\"$destination\",source_region=~\"$region\",source_provider=~\"$provider\"}", "legendFormat": "{{source}} → {{destination}}", "range": true, "refId": "A" }],
+      "title": "Ping Jitter",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 3, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": true, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 12 },
+      "id": 10,
+      "options": { "legend": { "calcs": ["lastNotNull", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "editorMode": "code", "expr": "netprob_mtr_destination_rtt_avg_ms{link=~\"$link\",source=~\"$source\",destination=~\"$destination\",source_region=~\"$region\",source_provider=~\"$provider\"}", "legendFormat": "{{source}} → {{destination}}", "range": true, "refId": "A" }],
+      "title": "MTR Destination RTT",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 3, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": true, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } }, "mappings": [], "max": 100, "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 20 }] }, "unit": "percent" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 12 },
+      "id": 11,
+      "options": { "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "editorMode": "code", "expr": "netprob_mtr_max_hop_loss_percent{link=~\"$link\",source=~\"$source\",destination=~\"$destination\",source_region=~\"$region\",source_provider=~\"$provider\"}", "legendFormat": "{{source}} → {{destination}}", "range": true, "refId": "A" }],
+      "title": "MTR Maximum Hop Loss",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "custom": { "fillOpacity": 70, "lineWidth": 0 }, "mappings": [{ "options": { "0": { "color": "red", "index": 0, "text": "Offline" }, "1": { "color": "green", "index": 1, "text": "Online" } }, "type": "value" }], "max": 1, "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 19 },
+      "id": 12,
+      "options": { "alignValue": "left", "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "mergeValues": true, "rowHeight": 0.9, "showValue": "auto", "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [{ "editorMode": "code", "expr": "netprob_agent_online{hostname=~\"$agent\"}", "legendFormat": "{{hostname}} · {{address}} · {{provider}}", "range": true, "refId": "A" }],
+      "title": "Agent Availability",
+      "type": "state-timeline"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }, "unit": "none" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 19 },
+      "id": 13,
+      "options": { "cellHeight": "sm", "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false }, "showHeader": true, "sortBy": [] },
+      "targets": [{ "editorMode": "code", "expr": "netprob_mtr_hop_count{link=~\"$link\",source=~\"$source\",destination=~\"$destination\"}", "format": "table", "instant": true, "legendFormat": "{{source}} → {{destination}}", "range": false, "refId": "A" }],
+      "title": "Latest MTR Hop Count",
+      "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "destination_agent_id": true, "direction_id": true, "link_id": true, "source_agent_id": true }, "renameByName": { "Value": "Hops", "destination": "Destination", "destination_address": "Destination IP", "link": "Link", "source": "Source", "source_address": "Source IP" } } }],
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["netprob", "network", "ping", "mtr"],
+  "templating": {
+    "list": [
+      { "allValue": ".*", "current": { "selected": true, "text": "All", "value": "$__all" }, "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "definition": "label_values(netprob_direction_info, link)", "hide": 0, "includeAll": true, "label": "Link", "multi": true, "name": "link", "options": [], "query": { "query": "label_values(netprob_direction_info, link)", "refId": "StandardVariableQuery" }, "refresh": 1, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query" },
+      { "allValue": ".*", "current": { "selected": true, "text": "All", "value": "$__all" }, "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "definition": "label_values(netprob_direction_info{link=~\"$link\"}, source)", "hide": 0, "includeAll": true, "label": "Source", "multi": true, "name": "source", "options": [], "query": { "query": "label_values(netprob_direction_info{link=~\"$link\"}, source)", "refId": "StandardVariableQuery" }, "refresh": 1, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query" },
+      { "allValue": ".*", "current": { "selected": true, "text": "All", "value": "$__all" }, "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "definition": "label_values(netprob_direction_info{link=~\"$link\",source=~\"$source\"}, destination)", "hide": 0, "includeAll": true, "label": "Destination", "multi": true, "name": "destination", "options": [], "query": { "query": "label_values(netprob_direction_info{link=~\"$link\",source=~\"$source\"}, destination)", "refId": "StandardVariableQuery" }, "refresh": 1, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query" },
+      { "allValue": ".*", "current": { "selected": true, "text": "All", "value": "$__all" }, "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "definition": "label_values(netprob_direction_info, source_region)", "hide": 0, "includeAll": true, "label": "Source region", "multi": true, "name": "region", "options": [], "query": { "query": "label_values(netprob_direction_info, source_region)", "refId": "StandardVariableQuery" }, "refresh": 1, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query" },
+      { "allValue": ".*", "current": { "selected": true, "text": "All", "value": "$__all" }, "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "definition": "label_values(netprob_direction_info, source_provider)", "hide": 0, "includeAll": true, "label": "Source provider", "multi": true, "name": "provider", "options": [], "query": { "query": "label_values(netprob_direction_info, source_provider)", "refId": "StandardVariableQuery" }, "refresh": 1, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query" },
+      { "allValue": ".*", "current": { "selected": true, "text": "All", "value": "$__all" }, "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "definition": "label_values(netprob_agent_online, hostname)", "hide": 0, "includeAll": true, "label": "Agent", "multi": true, "name": "agent", "options": [], "query": { "query": "label_values(netprob_agent_online, hostname)", "refId": "StandardVariableQuery" }, "refresh": 1, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query" }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "NetProb Overview",
+  "uid": "netprob-overview",
+  "version": 1,
+  "weekStart": ""
+}

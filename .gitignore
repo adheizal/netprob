@@ -1,0 +1,9 @@
+bin/
+dist/
+data/
+*.db
+.env
+web/dist/
+.git/
+AGENTS.md
+CLAUDE.md

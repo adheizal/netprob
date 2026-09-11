@@ -1,0 +1,1 @@
+ALTER TABLE agents ADD COLUMN primary_address TEXT NOT NULL DEFAULT '';
