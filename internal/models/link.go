@@ -15,19 +15,19 @@ type Link struct {
 }
 
 type Direction struct {
-	ID               string  `json:"id" db:"id"`
-	LinkID           string  `json:"link_id" db:"link_id"`
-	SourceAgentID    string  `json:"source_agent_id" db:"source_agent_id"`
-	DestinationAgentID string  `json:"destination_agent_id" db:"destination_agent_id"`
-	TargetAddress    string  `json:"target_address" db:"target_address"`
-	PingInterval     int     `json:"ping_interval_seconds" db:"ping_interval_seconds"`
-	MTRInterval      int     `json:"mtr_interval_seconds" db:"mtr_interval_seconds"`
-	PingEnabled      bool    `json:"ping_enabled" db:"ping_enabled"`
-	MTREnabled       bool    `json:"mtr_enabled" db:"mtr_enabled"`
-	MTRThresholdLoss *float64 `json:"mtr_threshold_loss_percent,omitempty" db:"mtr_threshold_loss_percent"`
-	MTRThresholdRtt  *float64 `json:"mtr_threshold_latency_ms,omitempty" db:"mtr_threshold_latency_ms"`
-	CreatedAt        time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at" db:"updated_at"`
+	ID                 string    `json:"id" db:"id"`
+	LinkID             string    `json:"link_id" db:"link_id"`
+	SourceAgentID      string    `json:"source_agent_id" db:"source_agent_id"`
+	DestinationAgentID string    `json:"destination_agent_id" db:"destination_agent_id"`
+	TargetAddress      string    `json:"target_address" db:"target_address"`
+	PingInterval       int       `json:"ping_interval_seconds" db:"ping_interval_seconds"`
+	MTRInterval        int       `json:"mtr_interval_seconds" db:"mtr_interval_seconds"`
+	PingEnabled        bool      `json:"ping_enabled" db:"ping_enabled"`
+	MTREnabled         bool      `json:"mtr_enabled" db:"mtr_enabled"`
+	MTRThresholdLoss   *float64  `json:"mtr_threshold_loss_percent,omitempty" db:"mtr_threshold_loss_percent"`
+	MTRThresholdRtt    *float64  `json:"mtr_threshold_latency_ms,omitempty" db:"mtr_threshold_latency_ms"`
+	CreatedAt          time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at" db:"updated_at"`
 }
 
 func NewLink(name, description string) *Link {

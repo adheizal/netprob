@@ -154,9 +154,9 @@ func (s *Scheduler) checkSchedules() {
 
 func (s *Scheduler) dispatchJob(d *models.Direction, probeType string) {
 	job := &models.Job{
-		ID:          uuid.NewString(),
-		Type:        probeType,
-		Direction:   models.JobDirection{
+		ID:   uuid.NewString(),
+		Type: probeType,
+		Direction: models.JobDirection{
 			SourceAgentID:      d.SourceAgentID,
 			DestinationAgentID: d.DestinationAgentID,
 			TargetAddress:      d.TargetAddress,
