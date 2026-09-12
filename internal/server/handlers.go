@@ -1,7 +1,9 @@
 package server
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -52,7 +54,7 @@ func (s *APIServer) HandleRegisterAgent(w http.ResponseWriter, r *http.Request) 
 	agent.TokenHash = auth.HashToken(token)
 
 	if err := s.store.DB.CreateAgent(agent); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to register agent")
 		return
 	}
 
@@ -65,7 +67,7 @@ func (s *APIServer) HandleRegisterAgent(w http.ResponseWriter, r *http.Request) 
 func (s *APIServer) HandleListAgents(w http.ResponseWriter, r *http.Request) {
 	agents, err := s.store.DB.ListAgents()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to list agents")
 		return
 	}
 	json.NewEncoder(w).Encode(agents)
@@ -89,9 +91,14 @@ func (s *APIServer) HandleGetAgent(w http.ResponseWriter, r *http.Request) {
 func (s *APIServer) HandleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := s.store.DB.DeleteAgent(id); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "agent not found", http.StatusNotFound)
+			return
+		}
+		writeInternalError(w, err, "failed to delete agent")
 		return
 	}
+	s.hub.DisconnectAgent(id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -110,7 +117,7 @@ func (s *APIServer) HandleCreateLink(w http.ResponseWriter, r *http.Request) {
 
 	link := models.NewLink(req.Name, req.Description)
 	if err := s.store.DB.CreateLink(link); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to create link")
 		return
 	}
 	json.NewEncoder(w).Encode(link)
@@ -119,22 +126,40 @@ func (s *APIServer) HandleCreateLink(w http.ResponseWriter, r *http.Request) {
 func (s *APIServer) HandleListLinks(w http.ResponseWriter, r *http.Request) {
 	links, err := s.store.DB.ListLinks()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to list links")
 		return
+	}
+	directions, err := s.store.DB.ListDirections()
+	if err != nil {
+		writeInternalError(w, err, "failed to list directions")
+		return
+	}
+	agents, err := s.store.DB.ListAgents()
+	if err != nil {
+		writeInternalError(w, err, "failed to list agents")
+		return
+	}
+	latestPings, err := s.store.DB.ListLatestPingResults()
+	if err != nil {
+		writeInternalError(w, err, "failed to load current ping metrics")
+		return
+	}
+
+	agentsByID := make(map[string]*models.Agent, len(agents))
+	for _, agent := range agents {
+		agentsByID[agent.ID] = agent
+	}
+	directionsByLink := make(map[string][]*models.Direction)
+	for _, direction := range directions {
+		directionsByLink[direction.LinkID] = append(directionsByLink[direction.LinkID], direction)
 	}
 
 	result := make([]linkWithAgents, len(links))
 	for i, l := range links {
 		result[i] = linkWithAgents{Link: l, Directions: make([]directionSummary, 0)}
-		dirs, err := s.store.DB.ListDirectionsByLink(l.ID)
-		if err != nil {
-			continue
-		}
-		for _, d := range dirs {
-			srcAgent, _ := s.store.DB.GetAgentByID(d.SourceAgentID)
-			destAgent, _ := s.store.DB.GetAgentByID(d.DestinationAgentID)
-			latestPing, _ := s.store.DB.GetLatestPingResult(d.ID)
-
+		for _, d := range directionsByLink[l.ID] {
+			srcAgent := agentsByID[d.SourceAgentID]
+			destAgent := agentsByID[d.DestinationAgentID]
 			srcSummary := &agentSummary{ID: d.SourceAgentID, Online: false}
 			if srcAgent != nil {
 				srcSummary.Hostname = srcAgent.Hostname
@@ -167,7 +192,7 @@ func (s *APIServer) HandleListLinks(w http.ResponseWriter, r *http.Request) {
 				PingEnabled:        d.PingEnabled,
 				MTREnabled:         d.MTREnabled,
 				Online:             s.hub.IsAgentOnline(d.SourceAgentID),
-				LatestPing:         latestPing,
+				LatestPing:         latestPings[d.ID],
 			})
 		}
 	}
@@ -192,7 +217,7 @@ func (s *APIServer) HandleUpdateLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.DB.UpdateLink(id, req.Name, req.Description); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to update link")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -201,7 +226,7 @@ func (s *APIServer) HandleUpdateLink(w http.ResponseWriter, r *http.Request) {
 func (s *APIServer) HandleDeleteLink(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := s.store.DB.DeleteLink(id); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to delete link")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -260,7 +285,7 @@ func (s *APIServer) HandleCreateDirection(w http.ResponseWriter, r *http.Request
 	dir.MTRThresholdRtt = req.MTRThresholdRtt
 
 	if err := s.store.DB.CreateDirection(dir); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to create direction")
 		return
 	}
 	json.NewEncoder(w).Encode(dir)
@@ -310,7 +335,7 @@ func (s *APIServer) HandleUpdateDirection(w http.ResponseWriter, r *http.Request
 	}
 
 	if err := s.store.DB.UpdateDirection(dir); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to update direction")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -320,7 +345,7 @@ func (s *APIServer) HandleListDirections(w http.ResponseWriter, r *http.Request)
 	linkID := chi.URLParam(r, "link_id")
 	dirs, err := s.store.DB.ListDirectionsByLink(linkID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to list directions")
 		return
 	}
 	json.NewEncoder(w).Encode(dirs)
@@ -338,7 +363,7 @@ func (s *APIServer) HandleGetPingResults(w http.ResponseWriter, r *http.Request)
 	}
 	results, err := s.store.DB.QueryPingResults(directionID, limit)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to load ping history")
 		return
 	}
 	json.NewEncoder(w).Encode(results)
@@ -356,7 +381,7 @@ func (s *APIServer) HandleGetMTRRuns(w http.ResponseWriter, r *http.Request) {
 	}
 	runs, err := s.store.DB.ListMTRRuns(directionID, limit)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to load MTR history")
 		return
 	}
 	json.NewEncoder(w).Encode(runs)
@@ -377,7 +402,7 @@ func (s *APIServer) HandleGetMTRRun(w http.ResponseWriter, r *http.Request) {
 func (s *APIServer) HandleGetRetentionSettings(w http.ResponseWriter, r *http.Request) {
 	settings, err := s.store.DB.GetRetentionSettings()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to load retention settings")
 		return
 	}
 	json.NewEncoder(w).Encode(settings)
@@ -403,12 +428,12 @@ func (s *APIServer) HandleUpdateRetentionSettings(w http.ResponseWriter, r *http
 		MTRRetentionDays:  *req.MTRRetentionDays,
 	}
 	if err := s.store.DB.UpdateRetentionSettings(settings); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to update retention settings")
 		return
 	}
 	cleanup, err := s.store.DB.CleanupExpiredProbeHistory(settings, time.Now().UTC())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to clean probe history")
 		return
 	}
 	json.NewEncoder(w).Encode(struct {

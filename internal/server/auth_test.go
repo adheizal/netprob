@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"netprob/internal/auth"
 	"netprob/internal/config"
@@ -79,6 +80,20 @@ func TestAdminAuthenticationAndSecurityToggle(t *testing.T) {
 	public := performRequest(api.Handler(), http.MethodGet, "/api/agents", nil, nil)
 	if public.Code != http.StatusOK {
 		t.Fatalf("auth-disabled agents response = %d: %s", public.Code, public.Body.String())
+	}
+
+	api.loginLimiter = newLoginRateLimiter(1, time.Minute)
+	firstInvalid := performRequest(api.Handler(), http.MethodPost, "/api/auth/login", map[string]any{
+		"email": "missing@example.com", "password": "wrong",
+	}, nil)
+	if firstInvalid.Code != http.StatusUnauthorized {
+		t.Fatalf("first invalid login = %d, want %d", firstInvalid.Code, http.StatusUnauthorized)
+	}
+	rateLimited := performRequest(api.Handler(), http.MethodPost, "/api/auth/login", map[string]any{
+		"email": "missing@example.com", "password": "wrong",
+	}, nil)
+	if rateLimited.Code != http.StatusTooManyRequests || rateLimited.Header().Get("Retry-After") == "" {
+		t.Fatalf("rate-limited login = %d headers=%v", rateLimited.Code, rateLimited.Header())
 	}
 }
 

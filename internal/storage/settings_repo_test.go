@@ -17,6 +17,7 @@ func TestRetentionSettingsAndCleanup(t *testing.T) {
 	if err := store.ApplyMigrations(store.DB()); err != nil {
 		t.Fatal(err)
 	}
+	seedProbeDirection(t, store, "direction", "source", "destination")
 
 	settings, err := store.GetRetentionSettings()
 	if err != nil {

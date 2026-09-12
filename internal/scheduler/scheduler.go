@@ -85,6 +85,7 @@ func (s *Scheduler) refreshDirections() {
 	}
 
 	newDirs := make(map[string]*DirectionScheduler)
+	s.mu.Lock()
 	for _, d := range dirs {
 		ds := &DirectionScheduler{Direction: d}
 		if existing, ok := s.directions[d.ID]; ok {
@@ -93,8 +94,6 @@ func (s *Scheduler) refreshDirections() {
 		}
 		newDirs[d.ID] = ds
 	}
-
-	s.mu.Lock()
 	s.directions = newDirs
 	s.mu.Unlock()
 }
@@ -116,39 +115,36 @@ func (s *Scheduler) refreshLoop(ctx context.Context) {
 
 // checkSchedules checks if any jobs need to be dispatched
 func (s *Scheduler) checkSchedules() {
-	s.mu.RLock()
-	dirs := make([]*models.Direction, 0, len(s.directions))
-	for _, ds := range s.directions {
-		dirs = append(dirs, ds.Direction)
-	}
-	s.mu.RUnlock()
-
 	now := time.Now()
+	type pendingJob struct {
+		direction *models.Direction
+		probeType string
+	}
+	jobs := make([]pendingJob, 0)
 
-	for _, d := range dirs {
+	s.mu.Lock()
+	for _, ds := range s.directions {
+		d := ds.Direction
 		if !s.hub.IsAgentOnline(d.SourceAgentID) {
-			continue
-		}
-
-		s.mu.RLock()
-		ds := s.directions[d.ID]
-		s.mu.RUnlock()
-
-		if ds == nil {
 			continue
 		}
 
 		// Check if ping is due
 		if d.PingEnabled && now.Sub(ds.lastPing) >= time.Duration(d.PingInterval)*time.Second {
-			s.dispatchJob(d, models.ProbePing)
 			ds.lastPing = now
+			jobs = append(jobs, pendingJob{direction: d, probeType: models.ProbePing})
 		}
 
 		// Check if MTR is due
 		if d.MTREnabled && now.Sub(ds.lastMTR) >= time.Duration(d.MTRInterval)*time.Second {
-			s.dispatchJob(d, models.ProbeMTR)
 			ds.lastMTR = now
+			jobs = append(jobs, pendingJob{direction: d, probeType: models.ProbeMTR})
 		}
+	}
+	s.mu.Unlock()
+
+	for _, job := range jobs {
+		s.dispatchJob(job.direction, job.probeType)
 	}
 }
 

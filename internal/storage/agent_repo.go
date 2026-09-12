@@ -153,8 +153,73 @@ func (s *SQLiteStore) UpdateAgentMetadata(id, hostname, version, primaryAddress 
 }
 
 func (s *SQLiteStore) DeleteAgent(id string) error {
-	_, err := s.db.Exec(`DELETE FROM agents WHERE id = ?`, id)
-	return err
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query(`
+		SELECT DISTINCT link_id FROM directions
+		WHERE source_agent_id = ? OR destination_agent_id = ?
+	`, id, id)
+	if err != nil {
+		return err
+	}
+	var linkIDs []string
+	for rows.Next() {
+		var linkID string
+		if err := rows.Scan(&linkID); err != nil {
+			rows.Close()
+			return err
+		}
+		linkIDs = append(linkIDs, linkID)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	statements := []string{
+		`DELETE FROM mtr_hops WHERE mtr_run_id IN (
+			SELECT id FROM mtr_runs WHERE source_agent_id = ? OR destination_agent_id = ? OR direction_id IN (
+				SELECT id FROM directions WHERE source_agent_id = ? OR destination_agent_id = ?
+			)
+		)`,
+		`DELETE FROM mtr_runs WHERE source_agent_id = ? OR destination_agent_id = ? OR direction_id IN (
+			SELECT id FROM directions WHERE source_agent_id = ? OR destination_agent_id = ?
+		)`,
+		`DELETE FROM ping_results WHERE source_agent_id = ? OR destination_agent_id = ? OR direction_id IN (
+			SELECT id FROM directions WHERE source_agent_id = ? OR destination_agent_id = ?
+		)`,
+		`DELETE FROM directions WHERE source_agent_id = ? OR destination_agent_id = ?`,
+	}
+	for _, statement := range statements {
+		if _, err := tx.Exec(statement, id, id, id, id); err != nil {
+			return err
+		}
+	}
+	for _, linkID := range linkIDs {
+		if _, err := tx.Exec(`DELETE FROM links WHERE id = ? AND NOT EXISTS (
+			SELECT 1 FROM directions WHERE link_id = ?
+		)`, linkID, linkID); err != nil {
+			return err
+		}
+	}
+	result, err := tx.Exec(`DELETE FROM agents WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if deleted == 0 {
+		return sql.ErrNoRows
+	}
+	return tx.Commit()
 }
 
 func scanAgent(row interface {

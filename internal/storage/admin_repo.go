@@ -48,6 +48,14 @@ func (s *SQLiteStore) DeleteAdminSession(tokenHash string) error {
 	return err
 }
 
+func (s *SQLiteStore) DeleteExpiredAdminSessions(now time.Time) (int64, error) {
+	result, err := s.db.Exec(`DELETE FROM admin_sessions WHERE expires_at <= ?`, now)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 func (s *SQLiteStore) UpdateAdminCredentials(adminID int, email, passwordHash string) error {
 	tx, err := s.db.Begin()
 	if err != nil {

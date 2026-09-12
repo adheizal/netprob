@@ -103,9 +103,14 @@ func runAgent(cfg *config.Config) {
 		default:
 		}
 
-		if err := connectToController(ctx, controllerURL, agentID, agentName, version, caps, location, cfg.Agent.PrimaryAddress, token); err != nil {
+		if err := connectToController(ctx, controllerURL, agentID, agentName, version, caps, location, cfg.Agent.PrimaryAddress, token, cfg.Agent.MaxConcurrentJobs, time.Duration(cfg.Agent.ProbeTimeout)*time.Second); err != nil {
 			log.Error().Err(err).Msg("connection failed, retrying in 10s")
-			time.Sleep(10 * time.Second)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(10 * time.Second):
+			}
+			continue
 		}
 
 		select {
@@ -116,7 +121,7 @@ func runAgent(cfg *config.Config) {
 	}
 }
 
-func connectToController(ctx context.Context, controllerURL, agentID, agentName, version string, caps map[string]string, location models.AgentLocation, primaryAddressOverride, token string) error {
+func connectToController(ctx context.Context, controllerURL, agentID, agentName, version string, caps map[string]string, location models.AgentLocation, primaryAddressOverride, token string, maxConcurrentJobs int, probeTimeout time.Duration) error {
 	// Build WebSocket URL
 	u, err := url.Parse(controllerURL)
 	if err != nil {
@@ -138,9 +143,36 @@ func connectToController(ctx context.Context, controllerURL, agentID, agentName,
 	}
 	defer conn.Close()
 	connCtx, cancelConnection := context.WithCancel(ctx)
-	defer cancelConnection()
 	writer := &websocketWriter{conn: conn}
+	jobQueue := make(chan any, 100)
+	var workerWG sync.WaitGroup
+	for i := 0; i < maxConcurrentJobs; i++ {
+		workerWG.Add(1)
+		go func() {
+			defer workerWG.Done()
+			for {
+				select {
+				case <-connCtx.Done():
+					return
+				default:
+				}
+				select {
+				case <-connCtx.Done():
+					return
+				case payload := <-jobQueue:
+					handleJob(connCtx, writer, payload, probeTimeout)
+				}
+			}
+		}()
+	}
+	defer func() {
+		cancelConnection()
+		_ = conn.Close()
+		workerWG.Wait()
+	}()
+	workerWG.Add(1)
 	go func() {
+		defer workerWG.Done()
 		<-connCtx.Done()
 		_ = conn.Close()
 	}()
@@ -183,7 +215,9 @@ func connectToController(ctx context.Context, controllerURL, agentID, agentName,
 	}
 
 	// Start keepalive goroutine
+	workerWG.Add(1)
 	go func() {
+		defer workerWG.Done()
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -221,7 +255,11 @@ func connectToController(ctx context.Context, controllerURL, agentID, agentName,
 
 		switch env.Type {
 		case protocol.TypeJob:
-			go handleJob(writer, env.Payload)
+			select {
+			case jobQueue <- env.Payload:
+			default:
+				rejectJob(writer, env.Payload, "agent job queue is full")
+			}
 		case protocol.TypePing:
 			if err := writer.WriteJSON(protocol.Envelope{Type: protocol.TypePong, Payload: map[string]any{}}, 5*time.Second); err != nil {
 				return fmt.Errorf("send pong: %w", err)
@@ -232,14 +270,30 @@ func connectToController(ctx context.Context, controllerURL, agentID, agentName,
 	}
 }
 
-func handleJob(writer *websocketWriter, payload any) {
+func decodeJob(payload any) (*models.Job, error) {
 	jobBytes, err := json.Marshal(payload)
 	if err != nil {
-		log.Warn().Err(err).Msg("failed to marshal job")
-		return
+		return nil, err
 	}
 	var job models.Job
 	if err := json.Unmarshal(jobBytes, &job); err != nil {
+		return nil, err
+	}
+	return &job, nil
+}
+
+func rejectJob(writer *websocketWriter, payload any, reason string) {
+	job, err := decodeJob(payload)
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to parse rejected job")
+		return
+	}
+	writeJobResult(writer, job, &models.JobResult{JobID: job.ID, Status: "error", Error: reason})
+}
+
+func handleJob(ctx context.Context, writer *websocketWriter, payload any, probeTimeout time.Duration) {
+	job, err := decodeJob(payload)
+	if err != nil {
 		log.Warn().Err(err).Msg("failed to parse job")
 		return
 	}
@@ -267,7 +321,9 @@ func handleJob(writer *websocketWriter, payload any) {
 			interval = int(i)
 		}
 
-		pingResult, err := ping.Execute(job.Direction.TargetAddress, count, interval)
+		probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+		pingResult, err := ping.ExecuteContext(probeCtx, job.Direction.TargetAddress, count, interval)
+		cancel()
 		if err != nil {
 			result.Status = "error"
 			result.Error = err.Error()
@@ -279,12 +335,15 @@ func handleJob(writer *websocketWriter, payload any) {
 		}
 
 	case models.ProbeMTR:
-		mtrResult, err := mtr.Execute(
+		probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+		mtrResult, err := mtr.ExecuteContext(
+			probeCtx,
 			job.Direction.TargetAddress,
 			job.Direction.SourceAgentID,
 			job.Direction.DestinationAgentID,
 			job.Direction.DirectionID,
 		)
+		cancel()
 		result.MTRRun = mtrResult
 		if err != nil {
 			result.Status = "error"
@@ -296,6 +355,10 @@ func handleJob(writer *websocketWriter, payload any) {
 		result.Error = "unknown probe type: " + job.Type
 	}
 
+	writeJobResult(writer, job, result)
+}
+
+func writeJobResult(writer *websocketWriter, job *models.Job, result *models.JobResult) {
 	// Send result back
 	resultMsg := protocol.Envelope{
 		Type: protocol.TypeResult,

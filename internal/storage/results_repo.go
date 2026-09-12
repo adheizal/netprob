@@ -2,6 +2,7 @@ package storage
 
 import (
 	"database/sql"
+	"time"
 
 	"netprob/internal/models"
 )
@@ -47,6 +48,34 @@ func (s *SQLiteStore) GetLatestPingResult(directionID string) (*models.PingResul
 	return scanPingResult(row)
 }
 
+func (s *SQLiteStore) ListLatestPingResults() (map[string]*models.PingResult, error) {
+	rows, err := s.db.Query(`
+		SELECT p.id, p.direction_id, p.source_agent_id, p.destination_agent_id, p.timestamp,
+			p.min_rtt_ms, p.avg_rtt_ms, p.max_rtt_ms, p.jitter_ms, p.packet_loss_percent,
+			p.packets_sent, p.packets_received
+		FROM ping_results p
+		WHERE p.id = (
+			SELECT newest.id FROM ping_results newest
+			WHERE newest.direction_id = p.direction_id
+			ORDER BY newest.timestamp DESC, newest.id DESC LIMIT 1
+		)
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	results := make(map[string]*models.PingResult)
+	for rows.Next() {
+		result, err := scanPingResult(rows)
+		if err != nil {
+			return nil, err
+		}
+		results[result.DirectionID] = result
+	}
+	return results, rows.Err()
+}
+
 func (s *SQLiteStore) SaveMTRRun(run *models.MTRRun) error {
 	if run.Status == "" {
 		if run.Error != "" {
@@ -85,8 +114,14 @@ func (s *SQLiteStore) SaveMTRRun(run *models.MTRRun) error {
 
 func (s *SQLiteStore) ListMTRRuns(directionID string, limit int) ([]*models.MTRRun, error) {
 	rows, err := s.db.Query(`
-		SELECT id, direction_id, source_agent_id, destination_agent_id, timestamp, status, error
-		FROM mtr_runs WHERE direction_id = ? ORDER BY timestamp DESC LIMIT ?
+		SELECT r.id, r.direction_id, r.source_agent_id, r.destination_agent_id, r.timestamp, r.status, r.error,
+			h.hop_number, h.host, h.ip, h.loss_percent, h.sent, h.last_ms, h.avg_ms, h.best_ms, h.worst_ms
+		FROM (
+			SELECT id, direction_id, source_agent_id, destination_agent_id, timestamp, status, error
+			FROM mtr_runs WHERE direction_id = ? ORDER BY timestamp DESC LIMIT ?
+		) r
+		LEFT JOIN mtr_hops h ON h.mtr_run_id = r.id
+		ORDER BY r.timestamp DESC, h.hop_number
 	`, directionID, limit)
 	if err != nil {
 		return nil, err
@@ -94,30 +129,42 @@ func (s *SQLiteStore) ListMTRRuns(directionID string, limit int) ([]*models.MTRR
 	defer rows.Close()
 
 	runs := make([]*models.MTRRun, 0)
+	byID := make(map[string]*models.MTRRun)
 	for rows.Next() {
-		var run models.MTRRun
-		err := rows.Scan(&run.ID, &run.DirectionID, &run.SourceAgentID, &run.DestinationAgentID, &run.Timestamp, &run.Status, &run.Error)
-		if err != nil {
+		var id, runDirectionID, sourceAgentID, destinationAgentID, status, runError string
+		var timestamp time.Time
+		var hopNumber, sent sql.NullInt64
+		var host, ip sql.NullString
+		var loss, lastMs, avgMs, bestMs, worstMs sql.NullFloat64
+		if err := rows.Scan(
+			&id, &runDirectionID, &sourceAgentID, &destinationAgentID, &timestamp, &status, &runError,
+			&hopNumber, &host, &ip, &loss, &sent, &lastMs, &avgMs, &bestMs, &worstMs,
+		); err != nil {
 			return nil, err
 		}
-		// Load hops
-		hopRows, err := s.db.Query(`
-			SELECT hop_number, host, ip, loss_percent, sent, last_ms, avg_ms, best_ms, worst_ms
-			FROM mtr_hops WHERE mtr_run_id = ? ORDER BY hop_number
-		`, run.ID)
-		if err != nil {
-			return nil, err
+		run := byID[id]
+		if run == nil {
+			run = &models.MTRRun{
+				ID: id, DirectionID: runDirectionID, SourceAgentID: sourceAgentID,
+				DestinationAgentID: destinationAgentID, Timestamp: timestamp,
+				Status: status, Error: runError, Hops: make([]models.MTRHop, 0),
+			}
+			byID[id] = run
+			runs = append(runs, run)
 		}
-		for hopRows.Next() {
-			var h models.MTRHop
-			var host, ip sql.NullString
-			var lastMs, avgMs, bestMs, worstMs sql.NullFloat64
-			hopRows.Scan(&h.HopNumber, &host, &ip, &h.LossPercent, &h.Sent, &lastMs, &avgMs, &bestMs, &worstMs)
+		if hopNumber.Valid {
+			h := models.MTRHop{HopNumber: int(hopNumber.Int64)}
 			if host.Valid {
 				h.Host = host.String
 			}
 			if ip.Valid {
 				h.IP = ip.String
+			}
+			if loss.Valid {
+				h.LossPercent = loss.Float64
+			}
+			if sent.Valid {
+				h.Sent = int(sent.Int64)
 			}
 			if lastMs.Valid {
 				h.LastMs = &lastMs.Float64
@@ -133,8 +180,6 @@ func (s *SQLiteStore) ListMTRRuns(directionID string, limit int) ([]*models.MTRR
 			}
 			run.Hops = append(run.Hops, h)
 		}
-		hopRows.Close()
-		runs = append(runs, &run)
 	}
 	return runs, rows.Err()
 }
@@ -162,7 +207,9 @@ func (s *SQLiteStore) GetMTRRunByID(id string) (*models.MTRRun, error) {
 		var h models.MTRHop
 		var host, ip sql.NullString
 		var lastMs, avgMs, bestMs, worstMs sql.NullFloat64
-		hopRows.Scan(&h.HopNumber, &host, &ip, &h.LossPercent, &h.Sent, &lastMs, &avgMs, &bestMs, &worstMs)
+		if err := hopRows.Scan(&h.HopNumber, &host, &ip, &h.LossPercent, &h.Sent, &lastMs, &avgMs, &bestMs, &worstMs); err != nil {
+			return nil, err
+		}
 		if host.Valid {
 			h.Host = host.String
 		}
@@ -182,6 +229,9 @@ func (s *SQLiteStore) GetMTRRunByID(id string) (*models.MTRRun, error) {
 			h.WorstMs = &worstMs.Float64
 		}
 		run.Hops = append(run.Hops, h)
+	}
+	if err := hopRows.Err(); err != nil {
+		return nil, err
 	}
 	return &run, nil
 }

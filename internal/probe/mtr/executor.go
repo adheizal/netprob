@@ -2,6 +2,7 @@ package mtr
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -18,6 +19,13 @@ import (
 // Execute runs MTR to the given target address with JSON output.
 // On Linux, the `mtr` command supports --json for machine-readable output.
 func Execute(target string, sourceAgentID, destAgentID, directionID string) (*models.MTRRun, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	return ExecuteContext(ctx, target, sourceAgentID, destAgentID, directionID)
+}
+
+// ExecuteContext runs MTR and terminates the child process when ctx is done.
+func ExecuteContext(ctx context.Context, target string, sourceAgentID, destAgentID, directionID string) (*models.MTRRun, error) {
 	run := &models.MTRRun{
 		ID:                 uuid.NewString(),
 		DirectionID:        directionID,
@@ -31,9 +39,14 @@ func Execute(target string, sourceAgentID, destAgentID, directionID string) (*mo
 		run.Error = err.Error()
 		return run, err
 	}
-	cmd := exec.Command("mtr", mtrArgs(target, 20)...)
+	cmd := exec.CommandContext(ctx, "mtr", mtrArgs(target, 20)...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		if ctx.Err() != nil {
+			err = fmt.Errorf("mtr timed out or was canceled: %w", ctx.Err())
+			run.Error = err.Error()
+			return run, err
+		}
 		err = fmt.Errorf("mtr failed: %w: %s", err, strings.TrimSpace(string(output)))
 		run.Error = err.Error()
 		return run, err

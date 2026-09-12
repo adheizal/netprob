@@ -1,6 +1,9 @@
 package server
 
 import (
+	"time"
+
+	"netprob/internal/auth"
 	"netprob/internal/config"
 	"netprob/internal/storage"
 
@@ -10,10 +13,12 @@ import (
 
 // APIServer is the REST API HTTP server.
 type APIServer struct {
-	router *chi.Mux
-	store  *storage.Store
-	hub    *Hub
-	cfg    *config.Config
+	router            *chi.Mux
+	store             *storage.Store
+	hub               *Hub
+	cfg               *config.Config
+	loginLimiter      *loginRateLimiter
+	dummyPasswordHash string
 }
 
 func NewAPIServer(store *storage.Store, hub *Hub, cfg *config.Config) *APIServer {
@@ -23,10 +28,12 @@ func NewAPIServer(store *storage.Store, hub *Hub, cfg *config.Config) *APIServer
 	r.Use(middleware.RequestID)
 
 	s := &APIServer{
-		router: r,
-		store:  store,
-		hub:    hub,
-		cfg:    cfg,
+		router:            r,
+		store:             store,
+		hub:               hub,
+		cfg:               cfg,
+		loginLimiter:      newLoginRateLimiter(10, time.Minute),
+		dummyPasswordHash: auth.DummyPasswordHash(),
 	}
 	s.routes()
 	return s

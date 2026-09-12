@@ -35,7 +35,3 @@ func Handler() http.Handler {
 		fileServer.ServeHTTP(w, r)
 	})
 }
-
-func Assets() embed.FS {
-	return distFS
-}

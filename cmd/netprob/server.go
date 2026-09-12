@@ -122,6 +122,7 @@ func runServer(cfg *config.Config) {
 	<-sigCh
 	log.Info().Msg("shutting down...")
 	cancel()
+	hub.Close()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
@@ -130,6 +131,11 @@ func runServer(cfg *config.Config) {
 
 func runRetentionCleanup(ctx context.Context, store *storage.SQLiteStore) {
 	cleanup := func() {
+		if deleted, err := store.DeleteExpiredAdminSessions(time.Now().UTC()); err != nil {
+			log.Warn().Err(err).Msg("failed to clean expired admin sessions")
+		} else if deleted > 0 {
+			log.Info().Int64("sessions_deleted", deleted).Msg("expired admin sessions cleaned")
+		}
 		settings, err := store.GetRetentionSettings()
 		if err != nil {
 			log.Warn().Err(err).Msg("failed to load retention settings")

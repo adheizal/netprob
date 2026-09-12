@@ -30,7 +30,10 @@ var adminAuthSchema string
 //go:embed migrations/008_agent_provider.sql
 var agentProviderSchema string
 
-const schemaVersion = 8
+//go:embed migrations/009_cleanup_orphans.sql
+var cleanupOrphansSchema string
+
+const schemaVersion = 9
 
 func (s *SQLiteStore) ApplyMigrations(db *sql.DB) error {
 	var version int
@@ -59,7 +62,9 @@ func (s *SQLiteStore) ApplyMigrations(db *sql.DB) error {
 			tx.Rollback()
 			return fmt.Errorf("record migration %d: %w", v, err)
 		}
-		tx.Commit()
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit migration %d: %w", v, err)
+		}
 	}
 	return nil
 }
@@ -82,6 +87,8 @@ func loadMigration(version int) (string, error) {
 		return adminAuthSchema, nil
 	case 8:
 		return agentProviderSchema, nil
+	case 9:
+		return cleanupOrphansSchema, nil
 	default:
 		return "", fmt.Errorf("unknown migration version %d", version)
 	}

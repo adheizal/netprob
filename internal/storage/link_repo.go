@@ -134,11 +134,6 @@ func (s *SQLiteStore) UpdateDirection(d *models.Direction) error {
 	return err
 }
 
-func (s *SQLiteStore) DeleteDirection(id string) error {
-	_, err := s.db.Exec(`DELETE FROM directions WHERE id = ?`, id)
-	return err
-}
-
 func scanLink(row interface {
 	Scan(dest ...any) error
 }) (*models.Link, error) {

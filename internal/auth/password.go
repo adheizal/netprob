@@ -27,6 +27,15 @@ func HashPassword(password string) (string, error) {
 		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key)), nil
 }
 
+// DummyPasswordHash returns a valid deterministic hash used to equalize login
+// work when an account does not exist. It is not an account credential.
+func DummyPasswordHash() string {
+	salt := []byte("netprob-login-pad")
+	key := pbkdf2SHA256([]byte("invalid-password"), salt, passwordIterations, passwordKeyBytes)
+	return fmt.Sprintf("pbkdf2-sha256$%d$%s$%s", passwordIterations,
+		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key))
+}
+
 func VerifyPassword(password, encoded string) bool {
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 4 || parts[0] != "pbkdf2-sha256" {

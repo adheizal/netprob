@@ -27,10 +27,21 @@ type Hub struct {
 
 // AgentConn wraps a WebSocket connection for an authenticated agent.
 type AgentConn struct {
-	AgentID string
-	Conn    *websocket.Conn
-	Send    chan []byte
-	Stop    chan struct{}
+	AgentID  string
+	Conn     *websocket.Conn
+	Send     chan []byte
+	Stop     chan struct{}
+	Done     chan struct{}
+	stopOnce sync.Once
+}
+
+func (c *AgentConn) stop() {
+	c.stopOnce.Do(func() {
+		close(c.Stop)
+		if c.Conn != nil {
+			_ = c.Conn.Close()
+		}
+	})
 }
 
 var errAgentSendQueueFull = errors.New("agent send queue full")
@@ -55,21 +66,17 @@ func (h *Hub) RegisterAgent(token, instanceID string) (*models.Agent, error) {
 // SetAgentConnection registers an agent's connection.
 func (h *Hub) SetAgentConnection(agent *models.Agent, conn *AgentConn) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	// Close any existing connection for this agent
-	if existing, ok := h.agents[agent.ID]; ok {
-		select {
-		case existing.Stop <- struct{}{}:
-		default:
-		}
-		delete(h.agents, agent.ID)
-	}
+	existing := h.agents[agent.ID]
 	h.agents[agent.ID] = conn
-
 	now := time.Now()
 	if err := h.store.DB.UpdateAgentStatus(agent.ID, true, now); err != nil {
 		log.Warn().Err(err).Str("agent_id", agent.ID).Msg("failed to update agent status")
+	}
+	h.mu.Unlock()
+
+	// Broadcast shutdown to every goroutine owned by the stale connection.
+	if existing != nil {
+		existing.stop()
 	}
 }
 
@@ -126,6 +133,33 @@ func (h *Hub) IsAgentOnline(agentID string) bool {
 	return ok
 }
 
+// DisconnectAgent stops the active connection for an agent, if any.
+func (h *Hub) DisconnectAgent(agentID string) {
+	h.mu.RLock()
+	conn := h.agents[agentID]
+	h.mu.RUnlock()
+	if conn != nil {
+		conn.stop()
+	}
+}
+
+// Close stops every active agent connection during controller shutdown.
+func (h *Hub) Close() {
+	h.mu.RLock()
+	connections := make([]*AgentConn, 0, len(h.agents))
+	for _, conn := range h.agents {
+		connections = append(connections, conn)
+	}
+	h.mu.RUnlock()
+	for _, conn := range connections {
+		conn.stop()
+	}
+	for _, conn := range connections {
+		<-conn.Done
+		h.RemoveAgentConnection(conn.AgentID, conn)
+	}
+}
+
 // AgentIDs returns all known agent IDs.
 func (h *Hub) AgentIDs() []string {
 	h.mu.RLock()
@@ -170,10 +204,9 @@ func (h *Hub) HandleAgentConnection(ctx context.Context, conn *websocket.Conn, a
 		AgentID: agent.ID,
 		Conn:    conn,
 		Send:    make(chan []byte, 100),
-		Stop:    make(chan struct{}, 1),
+		Stop:    make(chan struct{}),
+		Done:    make(chan struct{}),
 	}
-
-	h.SetAgentConnection(agent, ac)
 
 	// Respond with hello_ok
 	helloOK := protocol.Envelope{
@@ -183,11 +216,18 @@ func (h *Hub) HandleAgentConnection(ctx context.Context, conn *websocket.Conn, a
 			"online":   "true",
 		},
 	}
-	conn.WriteJSON(helloOK)
+	if err := conn.WriteJSON(helloOK); err != nil {
+		return err
+	}
 
 	// Handle incoming messages (results, pings)
 	go h.writePump(ac)
-	defer h.RemoveAgentConnection(agent.ID, ac)
+	h.SetAgentConnection(agent, ac)
+	defer func() {
+		ac.stop()
+		<-ac.Done
+		h.RemoveAgentConnection(agent.ID, ac)
+	}()
 
 	for {
 		select {
@@ -414,7 +454,8 @@ func getString(m map[string]any, key string) string {
 
 func (h *Hub) writePump(conn *AgentConn) {
 	defer func() {
-		conn.Conn.Close()
+		_ = conn.Conn.Close()
+		close(conn.Done)
 	}()
 
 	for {

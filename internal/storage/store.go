@@ -18,7 +18,6 @@ type MetricsStore interface {
 	WriteMTR(run *models.MTRRun, context MetricContext) error
 	WriteProbeStatus(probe string, success bool, timestamp time.Time, context MetricContext) error
 	WriteInventory(snapshot InventorySnapshot) error
-	QueryPing(sourceAgentID, destAgentID string, from, to time.Time, limit int) ([]*models.PingResult, error)
 }
 
 // NewStore creates a new Store with SQLite for config and the given metrics backend.

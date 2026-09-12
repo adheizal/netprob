@@ -19,7 +19,7 @@ func (s *SQLiteStore) listDirections(where string) ([]*models.Direction, error) 
 		SELECT id, link_id, source_agent_id, destination_agent_id, target_address,
 			ping_interval_seconds, mtr_interval_seconds, ping_enabled, mtr_enabled,
 			mtr_threshold_loss_percent, mtr_threshold_latency_ms, created_at, updated_at
-		FROM directions` + where)
+		FROM directions` + where + ` ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}

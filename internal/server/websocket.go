@@ -14,6 +14,8 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
+	// Agent WebSockets do not use browser cookies; the first protocol message
+	// authenticates an enrollment token, so browser-origin CSRF is not relevant.
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
@@ -28,6 +30,7 @@ func (s *APIServer) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		log.Warn().Err(err).Msg("websocket upgrade failed")
 		return
 	}
+	defer conn.Close()
 
 	// Set read deadline for the hello message
 	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
@@ -36,20 +39,17 @@ func (s *APIServer) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	_, msgData, err := conn.ReadMessage()
 	if err != nil {
 		log.Warn().Err(err).Msg("failed to read hello from agent")
-		conn.Close()
 		return
 	}
 
 	var env protocol.Envelope
 	if err := json.Unmarshal(msgData, &env); err != nil {
 		conn.WriteJSON(protocol.Envelope{Type: protocol.TypeError, Payload: map[string]any{"error": "invalid JSON"}})
-		conn.Close()
 		return
 	}
 
 	if env.Type != protocol.TypeHello {
 		conn.WriteJSON(protocol.Envelope{Type: protocol.TypeError, Payload: map[string]any{"error": "expected hello"}})
-		conn.Close()
 		return
 	}
 
@@ -57,7 +57,6 @@ func (s *APIServer) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	var hello models.AgentHello
 	if err := json.Unmarshal(helloBytes, &hello); err != nil {
 		conn.WriteJSON(protocol.Envelope{Type: protocol.TypeError, Payload: map[string]any{"error": "invalid hello"}})
-		conn.Close()
 		return
 	}
 
@@ -73,6 +72,5 @@ func (s *APIServer) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.hub.HandleAgentConnection(ctx, conn, &hello); err != nil {
 		log.Warn().Err(err).Str("agent_id", hello.AgentID).Msg("agent auth failed")
-		conn.Close()
 	}
 }

@@ -2,7 +2,7 @@ package config
 
 import (
 	"os"
-	"time"
+	"strconv"
 
 	"gopkg.in/yaml.v3"
 )
@@ -19,7 +19,6 @@ type ServerConfig struct {
 	DataDir       string `yaml:"data_dir"`
 	AdminEmail    string `yaml:"admin_email"`
 	AdminPassword string `yaml:"admin_password"`
-	Port          int    `yaml:"-"`
 }
 
 type MetricsConfig struct {
@@ -28,17 +27,17 @@ type MetricsConfig struct {
 }
 
 type AgentConfig struct {
-	ID             string            `yaml:"id"`
-	Name           string            `yaml:"name"`
-	Controller     string            `yaml:"controller"`
-	Token          string            `yaml:"token"`
-	Version        string            `yaml:"version"`
-	Region         string            `yaml:"region"`
-	GeoIPURL       string            `yaml:"geoip_url"`
-	PrimaryAddress string            `yaml:"primary_address"`
-	Capabilities   map[string]string `yaml:"capabilities"`
-	EnvFile        string            `yaml:"env_file"`
-	Labels         map[string]string `yaml:"labels"`
+	ID                string            `yaml:"id"`
+	Name              string            `yaml:"name"`
+	Controller        string            `yaml:"controller"`
+	Token             string            `yaml:"token"`
+	Version           string            `yaml:"version"`
+	Region            string            `yaml:"region"`
+	GeoIPURL          string            `yaml:"geoip_url"`
+	PrimaryAddress    string            `yaml:"primary_address"`
+	Capabilities      map[string]string `yaml:"capabilities"`
+	MaxConcurrentJobs int               `yaml:"max_concurrent_jobs"`
+	ProbeTimeout      int               `yaml:"probe_timeout_seconds"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -70,7 +69,9 @@ func DefaultConfig() *Config {
 			Backend: "sqlite",
 		},
 		Agent: AgentConfig{
-			GeoIPURL: "http://ip-api.com/json/",
+			GeoIPURL:          "http://ip-api.com/json/",
+			MaxConcurrentJobs: 4,
+			ProbeTimeout:      60,
 		},
 		LogLevel: "info",
 	}
@@ -94,6 +95,16 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.LogLevel == "" {
 		cfg.LogLevel = "info"
+	}
+	if cfg.Agent.MaxConcurrentJobs <= 0 {
+		cfg.Agent.MaxConcurrentJobs = 4
+	} else if cfg.Agent.MaxConcurrentJobs > 64 {
+		cfg.Agent.MaxConcurrentJobs = 64
+	}
+	if cfg.Agent.ProbeTimeout <= 0 {
+		cfg.Agent.ProbeTimeout = 60
+	} else if cfg.Agent.ProbeTimeout > 3600 {
+		cfg.Agent.ProbeTimeout = 3600
 	}
 	// Override from env
 	if v := os.Getenv("NETPROB_SERVER_LISTEN"); v != "" {
@@ -135,6 +146,22 @@ func applyDefaults(cfg *Config) {
 	if v := os.Getenv("NETPROB_CONTROLLER"); v != "" {
 		cfg.Agent.Controller = v
 	}
+	if v := os.Getenv("NETPROB_AGENT_MAX_CONCURRENT_JOBS"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			cfg.Agent.MaxConcurrentJobs = parsed
+			if cfg.Agent.MaxConcurrentJobs > 64 {
+				cfg.Agent.MaxConcurrentJobs = 64
+			}
+		}
+	}
+	if v := os.Getenv("NETPROB_AGENT_PROBE_TIMEOUT_SECONDS"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			cfg.Agent.ProbeTimeout = parsed
+			if cfg.Agent.ProbeTimeout > 3600 {
+				cfg.Agent.ProbeTimeout = 3600
+			}
+		}
+	}
 }
 
 func (c *Config) DSN() string {
@@ -143,8 +170,4 @@ func (c *Config) DSN() string {
 		dsn = "netprob.db"
 	}
 	return dsn
-}
-
-func (c *Config) SessionTimeout() time.Duration {
-	return 30 * time.Second
 }

@@ -26,6 +26,33 @@ Agent B ──┘              SQLite     └── Embedded React UI
 
 NetProb uses the JSON report output supported by mtr 0.93 and newer. Successful and failed scheduled MTR attempts are retained in MTR History; a failed run displays its error instead of appearing as missing history.
 
+### Agent Resource Footprint
+
+The following measurements are a representative production sample from two
+anonymized Linux hosts. Both agents had an active bidirectional link, with ping
+running every 10 seconds and MTR every 120 seconds:
+
+| Resource | Agent A | Agent B |
+|---|---:|---:|
+| Resident memory (RSS) | 9.8 MiB | 7.6 MiB |
+| Peak service memory | 9.9 MiB | 9.2 MiB |
+| CPU, including probe child processes | 0.047% of one core | 0.038% of one core |
+| Threads | 11 | 11 |
+| Open file descriptors | 7 | 7 |
+| Static agent binary | 5.63 MiB | 5.63 MiB |
+| WebSocket TCP payload | about 94 B/s | about 94 B/s |
+| Estimated daily TCP payload | about 7.7 MiB | about 7.7 MiB |
+
+Together, the two agents used approximately 17.3 MiB of resident memory and
+0.085% of one CPU core during the sample. The traffic estimate covers NetProb's
+WebSocket payload in both directions; TCP/IP overhead adds some network usage.
+Actual consumption varies with ping and MTR intervals, route length, reconnects,
+and the number of configured directions.
+
+A Go process may report roughly 1 GiB or more of virtual address space even
+while its RSS remains below 10 MiB. This is address space reserved by the Go
+runtime and must not be interpreted as physical RAM consumption.
+
 ## Build
 
 ### Versioned Release
@@ -327,12 +354,14 @@ VITE_API_TARGET=http://127.0.0.1:18080 VITE_DEV_PORT=5173 npm run dev
 | `NETPROB_AGENT_REGION` | no | Manual region override; wins over GeoIP |
 | `NETPROB_AGENT_PRIMARY_ADDRESS` | no | Manual primary target address; otherwise derived from the controller route |
 | `NETPROB_GEOIP_URL` | no | ip-api-compatible URL; default `http://ip-api.com/json/`, empty disables lookup |
+| `NETPROB_AGENT_MAX_CONCURRENT_JOBS` | no | Maximum simultaneous ping/MTR child processes; default `4`, maximum `64` |
+| `NETPROB_AGENT_PROBE_TIMEOUT_SECONDS` | no | Hard timeout for each ping/MTR process; default `60`, maximum `3600` |
 
 ## API
 
 Authentication is enabled by default. On a new database, sign in as `admin@netprob.local` with the temporary password `changeme`; the UI requires an immediate password change. Set `NETPROB_ADMIN_EMAIL` and `NETPROB_ADMIN_PASSWORD` before the first controller start to override those bootstrap credentials. Later environment changes do not overwrite an existing admin account.
 
-The dashboard and management endpoints use a seven-day `HttpOnly`, `SameSite=Strict` session cookie. `/health` and the authentication discovery/login endpoints remain public. `/ws` uses the reusable agent enrollment token from its initial hello message and never accepts the admin session as agent authentication. Authentication can be disabled or re-enabled from Settings; disabling it intentionally makes the dashboard and management API public.
+The dashboard and management endpoints use a seven-day `HttpOnly`, `SameSite=Strict` session cookie. Expired sessions are removed at controller startup and then hourly. Login is limited to 10 attempts per client IP per minute. `/health` and the authentication discovery/login endpoints remain public. `/ws` uses the reusable agent enrollment token from its initial hello message and never accepts the admin session as agent authentication. Authentication can be disabled or re-enabled from Settings; disabling it intentionally makes the dashboard and management API public.
 
 | Method | Path | Description |
 |---|---|---|
@@ -363,10 +392,13 @@ The dashboard and management endpoints use a seven-day `HttpOnly`, `SameSite=Str
 
 Ping and MTR intervals can be configured for both directions while creating a link in the UI. After creation, open the link detail page and use the settings button on either direction to adjust that direction independently.
 Links can be deleted from the Links page after confirmation; deletion also removes their directions and associated ping/MTR history.
+Deleting an agent also disconnects it and transactionally removes directions and probe history that reference it. A link left without directions is removed as part of the same transaction.
 
 A link already contains both A→B and B→A directions; do not create a second reversed link for the same pair. The Links page shows the latest latency and packet loss for both directions. Open a link to inspect latency history and MTR results.
 
 Link Detail refreshes metrics and MTR history every 10 seconds. MTR details identify both endpoints by hostname and primary IP address. The Settings page controls local SQLite retention independently for ping metrics and MTR runs in days. A value of `0` keeps that history forever. Saving applies cleanup immediately, and the controller repeats cleanup hourly. Reducing retention permanently deletes data older than the selected limit, including the hops belonging to expired MTR runs.
+
+Total ping loss is stored as a real sample with `100%` packet loss and no RTT values, so an outage remains distinguishable from a probe that never ran. SQLite runs with WAL mode, a five-second busy timeout, and foreign-key enforcement. Startup migration 9 removes relationship rows left orphaned by older releases.
 
 ## Grafana and VictoriaMetrics
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,7 +24,7 @@ func (s *APIServer) RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		security, err := s.store.DB.GetSecuritySettings()
 		if err != nil {
-			http.Error(w, "failed to load security settings", http.StatusInternalServerError)
+			writeInternalError(w, err, "failed to load security settings")
 			return
 		}
 		if !security.AuthEnabled {
@@ -47,7 +48,7 @@ func (s *APIServer) RequireAdmin(next http.Handler) http.Handler {
 func (s *APIServer) HandleGetAuthSession(w http.ResponseWriter, r *http.Request) {
 	security, err := s.store.DB.GetSecuritySettings()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to load authentication settings")
 		return
 	}
 	response := authSessionResponse{AuthEnabled: security.AuthEnabled}
@@ -60,18 +61,37 @@ func (s *APIServer) HandleGetAuthSession(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *APIServer) HandleLogin(w http.ResponseWriter, r *http.Request) {
+	if allowed, retryAfter := s.loginLimiter.allow(loginClientIP(r), time.Now()); !allowed {
+		seconds := int(retryAfter.Round(time.Second) / time.Second)
+		if seconds < 1 {
+			seconds = 1
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(seconds))
+		http.Error(w, "too many login attempts", http.StatusTooManyRequests)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
+	if len(req.Email) > 320 || len(req.Password) > 1024 {
+		http.Error(w, "invalid email or password", http.StatusUnauthorized)
+		return
+	}
 	admin, err := s.store.DB.GetAdminByEmail(req.Email)
-	if err != nil || !auth.VerifyPassword(req.Password, admin.PasswordHash) {
+	passwordHash := s.dummyPasswordHash
+	if err == nil {
+		passwordHash = admin.PasswordHash
+	}
+	passwordValid := auth.VerifyPassword(req.Password, passwordHash)
+	if err != nil || !passwordValid {
 		http.Error(w, "invalid email or password", http.StatusUnauthorized)
 		return
 	}
 	if err := s.issueAdminSession(w, r, admin); err != nil {
-		http.Error(w, "failed to create session", http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to create session")
 		return
 	}
 	json.NewEncoder(w).Encode(authSessionResponse{
@@ -120,14 +140,14 @@ func (s *APIServer) HandleUpdateAdminAccount(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err := s.store.DB.UpdateAdminCredentials(admin.ID, email, passwordHash); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to update administrator account")
 		return
 	}
 	admin.Email = email
 	admin.PasswordHash = passwordHash
 	admin.MustChangePassword = false
 	if err := s.issueAdminSession(w, r, admin); err != nil {
-		http.Error(w, "password changed but session renewal failed", http.StatusInternalServerError)
+		writeInternalError(w, err, "password changed but session renewal failed")
 		return
 	}
 	json.NewEncoder(w).Encode(authSessionResponse{AuthEnabled: true, Authenticated: true, Email: email})
@@ -141,7 +161,7 @@ func (s *APIServer) HandleUpdateSecuritySettings(w http.ResponseWriter, r *http.
 	}
 	settings, err := s.store.DB.UpdateSecuritySettings(*req.AuthEnabled)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err, "failed to update authentication settings")
 		return
 	}
 	json.NewEncoder(w).Encode(settings)

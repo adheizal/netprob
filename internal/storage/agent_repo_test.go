@@ -119,3 +119,43 @@ func TestReusableEnrollmentTokenCreatesDistinctAgentInstances(t *testing.T) {
 		t.Fatalf("agent count = %d, want 2", len(agents))
 	}
 }
+
+func TestDeleteAgentRemovesDirectionsProbeHistoryAndEmptyLink(t *testing.T) {
+	store := &SQLiteStore{dsn: filepath.Join(t.TempDir(), "netprob.db")}
+	if err := store.Open(); err != nil {
+		t.Fatal(err)
+	}
+	defer store.DB().Close()
+	if err := store.ApplyMigrations(store.DB()); err != nil {
+		t.Fatal(err)
+	}
+	direction := seedProbeDirection(t, store, "direction-delete", "source-delete", "destination-keep")
+	if _, err := store.DB().Exec(`INSERT INTO ping_results
+		(direction_id, source_agent_id, destination_agent_id, packets_sent, packets_received)
+		VALUES (?, ?, ?, 5, 0)`, direction.ID, direction.SourceAgentID, direction.DestinationAgentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DB().Exec(`INSERT INTO mtr_runs
+		(id, direction_id, source_agent_id, destination_agent_id, status, error)
+		VALUES ('mtr-delete', ?, ?, ?, 'success', '')`, direction.ID, direction.SourceAgentID, direction.DestinationAgentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DB().Exec(`INSERT INTO mtr_hops (mtr_run_id, hop_number) VALUES ('mtr-delete', 1)`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.DeleteAgent(direction.SourceAgentID); err != nil {
+		t.Fatal(err)
+	}
+	for table, want := range map[string]int{
+		"agents": 1, "links": 0, "directions": 0, "ping_results": 0, "mtr_runs": 0, "mtr_hops": 0,
+	} {
+		var count int
+		if err := store.DB().QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != want {
+			t.Fatalf("%s count = %d, want %d", table, count, want)
+		}
+	}
+}
