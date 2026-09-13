@@ -68,14 +68,14 @@ func TestVMMetricsStoreWritesPrometheusImportFormat(t *testing.T) {
 	}
 }
 
-func TestVMMetricsStoreBuildsBoundedMTRSummary(t *testing.T) {
+func TestVMMetricsStoreBuildsMTRSummaryAndRoute(t *testing.T) {
 	avg := 9.75
 	run := &models.MTRRun{
 		Timestamp: time.UnixMilli(1_700_000_000_123),
 		Status:    "success",
 		Hops: []models.MTRHop{
-			{HopNumber: 1, LossPercent: 0},
-			{HopNumber: 2, LossPercent: 2.5, AvgMs: &avg},
+			{HopNumber: 1, Host: "gateway", IP: "192.0.2.1", LossPercent: 0},
+			{HopNumber: 2, Host: "destination.example", IP: "203.0.113.20", LossPercent: 2.5, AvgMs: &avg},
 		},
 	}
 	lines := NewVMMetricsStore("http://unused").mtrToPrometheusLines(run, MetricContext{
@@ -92,6 +92,14 @@ func TestVMMetricsStoreBuildsBoundedMTRSummary(t *testing.T) {
 		`} 2.5 1700000000123`,
 		`netprob_mtr_destination_rtt_avg_ms{`,
 		`} 9.75 1700000000123`,
+		`netprob_mtr_hop_observed_timestamp_seconds{`,
+		`hop_number="1"`,
+		`hop_host="gateway"`,
+		`hop_ip="192.0.2.1"`,
+		`} 1700000000.123 1700000000123`,
+		`hop_number="2"`,
+		`hop_host="destination.example"`,
+		`hop_ip="203.0.113.20"`,
 	} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("MTR summary missing %q: %s", expected, body)

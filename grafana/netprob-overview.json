@@ -22,7 +22,7 @@
       }
     ]
   },
-  "description": "NetProb controller inventory, agent health, ping quality, and MTR summaries.",
+  "description": "NetProb controller inventory, agent health, ping quality, and MTR route details.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -159,6 +159,18 @@
       "targets": [{ "editorMode": "code", "expr": "netprob_mtr_hop_count{link=~\"$link\",source=~\"$source\",destination=~\"$destination\"}", "format": "table", "instant": true, "legendFormat": "{{source}} → {{destination}}", "range": false, "refId": "A" }],
       "title": "Latest MTR Hop Count",
       "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "destination_agent_id": true, "direction_id": true, "link_id": true, "source_agent_id": true }, "renameByName": { "Value": "Hops", "destination": "Destination", "destination_address": "Destination IP", "link": "Link", "source": "Source", "source_address": "Source IP" } } }],
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "description": "Hostname and IP for every hop in the latest successful MTR run per direction.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "none" }, "overrides": [] },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 26 },
+      "id": 14,
+      "options": { "cellHeight": "sm", "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false }, "showHeader": true, "sortBy": [{ "desc": false, "displayName": "Hop" }] },
+      "targets": [{ "editorMode": "code", "expr": "netprob_mtr_hop_observed_timestamp_seconds{link=~\"$link\",source=~\"$source\",destination=~\"$destination\",source_region=~\"$region\",source_provider=~\"$provider\"} == on(direction_id) group_left max by(direction_id) (netprob_mtr_hop_observed_timestamp_seconds{link=~\"$link\",source=~\"$source\",destination=~\"$destination\",source_region=~\"$region\",source_provider=~\"$provider\"})", "format": "table", "instant": true, "legendFormat": "{{source}} → {{destination}} hop {{hop_number}}", "range": false, "refId": "A" }],
+      "title": "Latest MTR Route",
+      "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true, "Value": true, "__name__": true, "destination_address": true, "destination_agent_id": true, "destination_provider": true, "destination_region": true, "direction_id": true, "link_id": true, "source_address": true, "source_agent_id": true, "source_provider": true, "source_region": true, "target_address": true }, "indexByName": { "link": 0, "source": 1, "destination": 2, "hop_number": 3, "hop_host": 4, "hop_ip": 5 }, "renameByName": { "destination": "Destination", "hop_host": "Host", "hop_ip": "IP", "hop_number": "Hop", "link": "Link", "source": "Source" } } }],
       "type": "table"
     }
   ],

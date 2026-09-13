@@ -448,8 +448,16 @@ netprob_mtr_destination_rtt_avg_ms
 netprob_mtr_max_hop_loss_percent
 ```
 
-Full MTR hop snapshots remain in SQLite and the NetProb UI. Exporting every hop
-as a label would create excessive time-series cardinality.
+The latest MTR route is also exported for the Grafana hop table:
+
+```text
+netprob_mtr_hop_observed_timestamp_seconds{hop_number,hop_host,hop_ip,...}
+```
+
+This metric exposes hop hostnames and IP addresses to VictoriaMetrics. Its value
+is the MTR observation time, which lets the dashboard select one coherent latest
+route per direction even after a route changes. Complete hop measurements and
+historical run details remain in SQLite and the NetProb UI.
 
 Controller inventory is exported at startup and every 30 seconds:
 

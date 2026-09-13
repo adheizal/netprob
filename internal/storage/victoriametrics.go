@@ -13,8 +13,8 @@ import (
 	"netprob/internal/models"
 )
 
-// VMMetricsStore mirrors ping, MTR summaries, and controller inventory to VictoriaMetrics.
-// Complete MTR snapshots and hops remain in SQLite.
+// VMMetricsStore mirrors ping, MTR summaries and route metadata, and controller
+// inventory to VictoriaMetrics. Complete MTR snapshots remain in SQLite.
 type VMMStore struct {
 	url      string
 	client   *http.Client
@@ -141,6 +141,15 @@ func (s *VMMStore) mtrToPrometheusLines(run *models.MTRRun, context MetricContex
 	if destinationRTT := run.Hops[len(run.Hops)-1].AvgMs; destinationRTT != nil {
 		lines = append(lines, prometheusLine("netprob_mtr_destination_rtt_avg_ms", labels, *destinationRTT, ts))
 	}
+	observedAt := float64(run.Timestamp.UnixMilli()) / 1000
+	for _, hop := range run.Hops {
+		hopLabels := withLabels(labels, map[string]string{
+			"hop_number": strconv.Itoa(hop.HopNumber),
+			"hop_host":   hop.Host,
+			"hop_ip":     hop.IP,
+		})
+		lines = append(lines, prometheusLine("netprob_mtr_hop_observed_timestamp_seconds", hopLabels, observedAt, ts))
+	}
 	return lines
 }
 
@@ -264,6 +273,17 @@ func withLabel(labels map[string]string, name, value string) map[string]string {
 		result[key] = existing
 	}
 	result[name] = value
+	return result
+}
+
+func withLabels(labels map[string]string, additional map[string]string) map[string]string {
+	result := make(map[string]string, len(labels)+len(additional))
+	for key, existing := range labels {
+		result[key] = existing
+	}
+	for key, value := range additional {
+		result[key] = value
+	}
 	return result
 }
 

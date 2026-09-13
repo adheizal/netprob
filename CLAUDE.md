@@ -154,7 +154,7 @@ The E2E script must stop only processes recorded in its own PID files. Never add
 2. The agent sends ping every 30 seconds. The controller must answer with pong before the agent's 60-second read deadline.
 3. An old connection must not remove or mark a replacement connection offline.
 4. Jobs are placed directly in `Envelope.Payload`. Results remain flat objects with `job_id`, `status`, `error`, `ping_result`, and `mtr_run`.
-5. SQLite is the API/UI source of truth. When configured, VictoriaMetrics receives enriched ping samples, bounded MTR summaries, failed-ping status events, and 30-second controller inventory snapshots. Probe labels retain stable IDs and add hostname, address, link, region, and provider metadata. Do not export full per-hop MTR topology as labels.
+5. SQLite is the API/UI source of truth. When configured, VictoriaMetrics receives enriched ping samples, bounded MTR summaries, failed-ping status events, latest-route MTR hop metadata, and 30-second controller inventory snapshots. Probe labels retain stable IDs and add hostname, address, link, region, and provider metadata. Hop metadata may include the hop number, hostname, and IP; never export probe error text as a label.
 6. API list endpoints must encode empty collections as `[]`, not `null`.
 7. Client-side routes must fall back to embedded `index.html`.
 8. Agent registration only issues identity and credentials. After token authentication, the WebSocket hello synchronizes hostname, version, capabilities, and usable global-unicast interface addresses. Invalid, loopback, and link-local hello addresses must never replace registered fallback addresses.
