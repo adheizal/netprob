@@ -69,13 +69,13 @@ func TestVMMetricsStoreWritesPrometheusImportFormat(t *testing.T) {
 }
 
 func TestVMMetricsStoreBuildsMTRSummaryAndRoute(t *testing.T) {
-	avg := 9.75
+	avg, best, worst := 9.75, 8.25, 14.5
 	run := &models.MTRRun{
 		Timestamp: time.UnixMilli(1_700_000_000_123),
 		Status:    "success",
 		Hops: []models.MTRHop{
 			{HopNumber: 1, Host: "gateway", IP: "192.0.2.1", LossPercent: 0},
-			{HopNumber: 2, Host: "destination.example", IP: "203.0.113.20", LossPercent: 2.5, AvgMs: &avg},
+			{HopNumber: 2, Host: "destination.example", IP: "203.0.113.20", LossPercent: 2.5, AvgMs: &avg, BestMs: &best, WorstMs: &worst},
 		},
 	}
 	lines := NewVMMetricsStore("http://unused").mtrToPrometheusLines(run, MetricContext{
@@ -97,9 +97,19 @@ func TestVMMetricsStoreBuildsMTRSummaryAndRoute(t *testing.T) {
 		`hop_host="gateway"`,
 		`hop_ip="192.0.2.1"`,
 		`} 1700000000.123 1700000000123`,
+		`netprob_mtr_hop_observed_timestamp_milliseconds{`,
+		`} 1700000000123 1700000000123`,
+		`netprob_mtr_hop_loss_percent{`,
+		`} NaN 1700000000123`,
 		`hop_number="2"`,
 		`hop_host="destination.example"`,
 		`hop_ip="203.0.113.20"`,
+		`netprob_mtr_hop_rtt_avg_ms{`,
+		`} 9.75 1700000000123`,
+		`netprob_mtr_hop_rtt_best_ms{`,
+		`} 8.25 1700000000123`,
+		`netprob_mtr_hop_rtt_worst_ms{`,
+		`} 14.5 1700000000123`,
 	} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("MTR summary missing %q: %s", expected, body)

@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -148,7 +149,14 @@ func (s *VMMStore) mtrToPrometheusLines(run *models.MTRRun, context MetricContex
 			"hop_host":   hop.Host,
 			"hop_ip":     hop.IP,
 		})
-		lines = append(lines, prometheusLine("netprob_mtr_hop_observed_timestamp_seconds", hopLabels, observedAt, ts))
+		lines = append(lines,
+			prometheusLine("netprob_mtr_hop_observed_timestamp_seconds", hopLabels, observedAt, ts),
+			prometheusLine("netprob_mtr_hop_observed_timestamp_milliseconds", hopLabels, float64(ts), ts),
+			prometheusLine("netprob_mtr_hop_loss_percent", hopLabels, hop.LossPercent, ts),
+			prometheusLine("netprob_mtr_hop_rtt_avg_ms", hopLabels, nullableMetricValue(hop.AvgMs), ts),
+			prometheusLine("netprob_mtr_hop_rtt_best_ms", hopLabels, nullableMetricValue(hop.BestMs), ts),
+			prometheusLine("netprob_mtr_hop_rtt_worst_ms", hopLabels, nullableMetricValue(hop.WorstMs), ts),
+		)
 	}
 	return lines
 }
@@ -285,6 +293,13 @@ func withLabels(labels map[string]string, additional map[string]string) map[stri
 		result[key] = value
 	}
 	return result
+}
+
+func nullableMetricValue(value *float64) float64 {
+	if value == nil {
+		return math.NaN()
+	}
+	return *value
 }
 
 func prometheusLine(name string, labels map[string]string, value float64, timestamp int64) string {

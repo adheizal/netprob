@@ -92,7 +92,7 @@ Do not hand-edit hashed assets under `internal/webui/dist/`.
 - Dispatch a direction to its source agent and derive direction online state from that source.
 - Encode empty API collections as JSON arrays.
 - Preserve SPA fallback for client-side routes.
-- Save ping and complete MTR results in SQLite. When VictoriaMetrics is configured, mirror enriched ping metrics, bounded MTR summaries, failed-ping status, latest MTR route metadata, and periodic controller inventory. Never put error text in labels.
+- Save ping and complete MTR results in SQLite. When VictoriaMetrics is configured, mirror enriched ping metrics, bounded MTR summaries, failed-ping status, latest MTR route metadata and numeric per-hop measurements, and periodic controller inventory. Never put error text or numeric measurements in labels.
 - Persist a parseable ping summary even when `ping` exits non-zero for total packet loss; keep unavailable RTT fields null.
 - Treat probe targets as data, never command options.
 - Validate direction intervals as positive values and expose per-direction probe settings through the UI.
