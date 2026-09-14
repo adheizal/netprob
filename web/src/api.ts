@@ -1,4 +1,4 @@
-import type { Agent, AuthSession, Link, PingResult, MTRRun, RetentionSettings, RetentionSettingsUpdate, SecuritySettings } from './types'
+import type { Agent, AgentPage, AuthSession, Link, PingResult, MTRRun, RetentionSettings, RetentionSettingsUpdate, SecuritySettings } from './types'
 
 const API_BASE = import.meta.env.DEV ? '' : ''
 
@@ -31,6 +31,8 @@ export const api = {
   registerAgent: (data: Partial<Agent>): Promise<{ id: string; token: string }> =>
     fetchAPI('/api/agents/register', { method: 'POST', body: JSON.stringify(data) }),
   listAgents: (): Promise<Agent[]> => fetchAPI('/api/agents'),
+  listAgentsPage: (page: number, pageSize: number): Promise<AgentPage> =>
+    fetchAPI(`/api/agents?page=${page}&page_size=${pageSize}`),
   getAgent: (id: string): Promise<Agent> => fetchAPI(`/api/agents/${id}`),
   deleteAgent: (id: string): Promise<void> => fetchAPI(`/api/agents/${id}`, { method: 'DELETE' }),
 

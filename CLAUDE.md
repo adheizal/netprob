@@ -175,6 +175,7 @@ The E2E script must stop only processes recorded in its own PID files. Never add
 23. Serialize scheduler refresh and timestamp updates without holding its lock during job dispatch. Bound agent execution with a configurable worker pool and hard context deadline for each child process.
 24. Open SQLite with WAL, a five-second busy timeout, and foreign-key enforcement. Agent deletion must transactionally remove related history and directions, and startup migrations must clean legacy orphans.
 25. Link-list and MTR-history handlers must use bounded bulk queries rather than per-direction or per-run N+1 reads.
+26. The Agents UI uses server-side pagination. `/api/agents` without query parameters retains its array response; requests with `page` or `page_size` return pagination metadata and cap page size at 100.
 
 ## Code Quality
 

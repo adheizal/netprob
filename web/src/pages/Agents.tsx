@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Copy, CheckCircle, XCircle, RefreshCw } from 'lucide-react'
+import { Plus, Trash2, Copy, CheckCircle, XCircle, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react'
 import { api } from '../api'
 import type { Agent } from '../types'
 
@@ -10,12 +10,22 @@ export default function Agents() {
   const [registerLoading, setRegisterLoading] = useState(false)
   const [newAgent, setNewAgent] = useState<{ id: string; token: string } | null>(null)
   const [copiedToken, setCopiedToken] = useState(false)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [total, setTotal] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
 
-  async function loadAgents() {
+  async function loadAgents(targetPage = page, targetPageSize = pageSize) {
     setLoading(true)
     try {
-      const data = await api.listAgents()
-      setAgents(data)
+      const data = await api.listAgentsPage(targetPage, targetPageSize)
+      if (data.total > 0 && targetPage > data.total_pages) {
+        setPage(data.total_pages)
+        return
+      }
+      setAgents(data.agents)
+      setTotal(data.total)
+      setTotalPages(data.total_pages)
     } catch (err) {
       console.error('Failed to load agents:', err)
     } finally {
@@ -25,9 +35,17 @@ export default function Agents() {
 
   useEffect(() => {
     let active = true
-    api.listAgents()
+    setLoading(true)
+    api.listAgentsPage(page, pageSize)
       .then(data => {
-        if (active) setAgents(data)
+        if (!active) return
+        if (data.total > 0 && page > data.total_pages) {
+          setPage(data.total_pages)
+          return
+        }
+        setAgents(data.agents)
+        setTotal(data.total)
+        setTotalPages(data.total_pages)
       })
       .catch(err => console.error('Failed to load agents:', err))
       .finally(() => {
@@ -36,7 +54,7 @@ export default function Agents() {
     return () => {
       active = false
     }
-  }, [])
+  }, [page, pageSize])
 
   async function handleRegister() {
     setRegisterLoading(true)
@@ -45,7 +63,11 @@ export default function Agents() {
       setNewAgent(result)
       setShowRegister(false)
       setCopiedToken(false)
-      loadAgents()
+      if (page === 1) {
+        loadAgents(1, pageSize)
+      } else {
+        setPage(1)
+      }
     } catch (err) {
       console.error('Failed to register agent:', err)
     } finally {
@@ -57,7 +79,11 @@ export default function Agents() {
     if (!confirm('Delete this agent?')) return
     try {
       await api.deleteAgent(id)
-      loadAgents()
+      if (agents.length === 1 && page > 1) {
+        setPage(page - 1)
+      } else {
+        loadAgents(page, pageSize)
+      }
     } catch (err) {
       console.error('Failed to delete agent:', err)
     }
@@ -114,8 +140,9 @@ export default function Agents() {
       ) : agents.length === 0 ? (
         <p className="text-gray-500">No agents registered.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full bg-white rounded-lg shadow overflow-hidden">
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Status</th>
@@ -177,7 +204,49 @@ export default function Agents() {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
+          <div className="flex flex-col gap-3 border-t border-gray-100 px-4 py-3 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total} agents
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2">
+                Rows
+                <select
+                  value={pageSize}
+                  onChange={event => {
+                    setPageSize(Number(event.target.value))
+                    setPage(1)
+                  }}
+                  className="rounded border border-gray-300 bg-white px-2 py-1"
+                >
+                  {[10, 20, 50, 100].map(size => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+              </label>
+              <span>Page {page} of {Math.max(totalPages, 1)}</span>
+              <button
+                type="button"
+                onClick={() => setPage(current => current - 1)}
+                disabled={page <= 1}
+                aria-label="Previous page"
+                className="rounded border border-gray-300 p-1.5 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage(current => current + 1)}
+                disabled={totalPages === 0 || page >= totalPages}
+                aria-label="Next page"
+                className="rounded border border-gray-300 p-1.5 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

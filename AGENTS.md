@@ -91,6 +91,7 @@ Do not hand-edit hashed assets under `internal/webui/dist/`.
 - Never let a stale connection mark its replacement offline.
 - Dispatch a direction to its source agent and derive direction online state from that source.
 - Encode empty API collections as JSON arrays.
+- Keep the unparameterized agents endpoint backward compatible as an array; paginated requests return metadata and must cap page size at 100.
 - Preserve SPA fallback for client-side routes.
 - Save ping and complete MTR results in SQLite. When VictoriaMetrics is configured, mirror enriched ping metrics, bounded MTR summaries, failed-ping status, latest MTR route metadata and numeric per-hop measurements, and periodic controller inventory. Never put error text or numeric measurements in labels.
 - Persist a parseable ping summary even when `ping` exits non-zero for total packet loss; keep unavailable RTT fields null.

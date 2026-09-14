@@ -18,6 +18,14 @@ type registerAgentResponse struct {
 	Token string `json:"token"`
 }
 
+type agentPageResponse struct {
+	Agents     []*models.Agent `json:"agents"`
+	Page       int             `json:"page"`
+	PageSize   int             `json:"page_size"`
+	Total      int             `json:"total"`
+	TotalPages int             `json:"total_pages"`
+}
+
 type createLinkRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`

@@ -370,7 +370,7 @@ The dashboard and management endpoints use a seven-day `HttpOnly`, `SameSite=Str
 | `POST` | `/api/auth/logout` | Revoke the current admin session |
 | `PUT` | `/api/auth/account` | Change admin email/password and rotate the session |
 | `POST` | `/api/agents/register` | Create and return a reusable agent enrollment token |
-| `GET` | `/api/agents` | List agents |
+| `GET` | `/api/agents` | List agents; supports `page` and `page_size` pagination parameters |
 | `GET` | `/api/agents/{id}` | Get an agent |
 | `DELETE` | `/api/agents/{id}` | Delete an agent |
 | `POST` | `/api/links` | Create a link |
@@ -393,6 +393,8 @@ The dashboard and management endpoints use a seven-day `HttpOnly`, `SameSite=Str
 Ping and MTR intervals can be configured for both directions while creating a link in the UI. After creation, open the link detail page and use the settings button on either direction to adjust that direction independently.
 Links can be deleted from the Links page after confirmation; deletion also removes their directions and associated ping/MTR history.
 Deleting an agent also disconnects it and transactionally removes directions and probe history that reference it. A link left without directions is removed as part of the same transaction.
+
+The Agents page loads 20 records at a time and lets the user select 10, 20, 50, or 100 rows. The paginated API response includes `agents`, `page`, `page_size`, `total`, and `total_pages`; `page_size` is capped at 100. Calling `/api/agents` without pagination parameters retains the original array response for existing integrations.
 
 A link already contains both A→B and B→A directions; do not create a second reversed link for the same pair. The Links page shows the latest latency and packet loss for both directions. Open a link to inspect latency history and MTR results.
 

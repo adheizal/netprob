@@ -65,6 +65,50 @@ func (s *APIServer) HandleRegisterAgent(w http.ResponseWriter, r *http.Request) 
 // --- List Agents ---
 
 func (s *APIServer) HandleListAgents(w http.ResponseWriter, r *http.Request) {
+	pageValue := r.URL.Query().Get("page")
+	pageSizeValue := r.URL.Query().Get("page_size")
+	if pageValue != "" || pageSizeValue != "" {
+		page, pageSize := 1, 20
+		var err error
+		if pageValue != "" {
+			page, err = strconv.Atoi(pageValue)
+			if err != nil || page < 1 {
+				http.Error(w, "page must be a positive integer", http.StatusBadRequest)
+				return
+			}
+		}
+		if pageSizeValue != "" {
+			pageSize, err = strconv.Atoi(pageSizeValue)
+			if err != nil || pageSize < 1 || pageSize > 100 {
+				http.Error(w, "page_size must be between 1 and 100", http.StatusBadRequest)
+				return
+			}
+		}
+
+		total, err := s.store.DB.CountAgents()
+		if err != nil {
+			writeInternalError(w, err, "failed to count agents")
+			return
+		}
+		totalPages := (total + pageSize - 1) / pageSize
+		agents := make([]*models.Agent, 0)
+		if page <= totalPages {
+			agents, err = s.store.DB.ListAgentsPage(pageSize, (page-1)*pageSize)
+			if err != nil {
+				writeInternalError(w, err, "failed to list agents")
+				return
+			}
+		}
+		json.NewEncoder(w).Encode(agentPageResponse{
+			Agents:     agents,
+			Page:       page,
+			PageSize:   pageSize,
+			Total:      total,
+			TotalPages: totalPages,
+		})
+		return
+	}
+
 	agents, err := s.store.DB.ListAgents()
 	if err != nil {
 		writeInternalError(w, err, "failed to list agents")

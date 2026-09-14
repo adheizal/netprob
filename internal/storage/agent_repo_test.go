@@ -120,6 +120,47 @@ func TestReusableEnrollmentTokenCreatesDistinctAgentInstances(t *testing.T) {
 	}
 }
 
+func TestListAgentsPage(t *testing.T) {
+	store := &SQLiteStore{dsn: filepath.Join(t.TempDir(), "netprob.db")}
+	if err := store.Open(); err != nil {
+		t.Fatal(err)
+	}
+	defer store.DB().Close()
+	if err := store.ApplyMigrations(store.DB()); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, hostname := range []string{"agent-a", "agent-b", "agent-c"} {
+		agent := models.NewAgent(hostname, "test", []string{}, []string{})
+		if err := store.CreateAgent(agent); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	total, err := store.CountAgents()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 3 {
+		t.Fatalf("agent count = %d, want 3", total)
+	}
+
+	first, err := store.ListAgentsPage(2, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.ListAgentsPage(2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 2 || len(second) != 1 {
+		t.Fatalf("page lengths = %d and %d, want 2 and 1", len(first), len(second))
+	}
+	if first[0].ID == second[0].ID || first[1].ID == second[0].ID {
+		t.Fatal("agent appeared on more than one page")
+	}
+}
+
 func TestDeleteAgentRemovesDirectionsProbeHistoryAndEmptyLink(t *testing.T) {
 	store := &SQLiteStore{dsn: filepath.Join(t.TempDir(), "netprob.db")}
 	if err := store.Open(); err != nil {

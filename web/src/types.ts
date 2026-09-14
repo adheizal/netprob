@@ -12,6 +12,14 @@ export interface Agent {
   updated_at: string
 }
 
+export interface AgentPage {
+  agents: Agent[]
+  page: number
+  page_size: number
+  total: number
+  total_pages: number
+}
+
 export interface AgentLocation {
   public_ip: string
   country_code: string

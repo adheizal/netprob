@@ -126,6 +126,34 @@ func (s *SQLiteStore) ListAgents() ([]*models.Agent, error) {
 	return agents, rows.Err()
 }
 
+func (s *SQLiteStore) ListAgentsPage(limit, offset int) ([]*models.Agent, error) {
+	rows, err := s.db.Query(`
+		SELECT id, hostname, version, addresses, primary_address, capabilities, public_ip, country_code, region, city, timezone, as_name, isp,
+		       token_hash, instance_id, online, last_seen, created_at, updated_at
+		FROM agents ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
+	`, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	agents := make([]*models.Agent, 0)
+	for rows.Next() {
+		agent, err := scanAgent(rows)
+		if err != nil {
+			return nil, err
+		}
+		agents = append(agents, agent)
+	}
+	return agents, rows.Err()
+}
+
+func (s *SQLiteStore) CountAgents() (int, error) {
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM agents`).Scan(&count)
+	return count, err
+}
+
 func (s *SQLiteStore) UpdateAgentStatus(id string, online bool, lastSeen time.Time) error {
 	_, err := s.db.Exec(`
 		UPDATE agents SET online = ?, last_seen = ?, updated_at = ? WHERE id = ?
