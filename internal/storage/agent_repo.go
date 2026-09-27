@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"netprob/internal/models"
@@ -127,11 +129,20 @@ func (s *SQLiteStore) ListAgents() ([]*models.Agent, error) {
 }
 
 func (s *SQLiteStore) ListAgentsPage(limit, offset int) ([]*models.Agent, error) {
+	return s.ListAgentsPageFiltered(limit, offset, "", "")
+}
+
+func (s *SQLiteStore) ListAgentsPageFiltered(limit, offset int, search, status string) ([]*models.Agent, error) {
+	search = strings.ToLower(strings.TrimSpace(search))
+	pattern := "%" + search + "%"
 	rows, err := s.db.Query(`
 		SELECT id, hostname, version, addresses, primary_address, capabilities, public_ip, country_code, region, city, timezone, as_name, isp,
 		       token_hash, instance_id, online, last_seen, created_at, updated_at
-		FROM agents ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
-	`, limit, offset)
+		FROM agents
+		WHERE (? = '' OR lower(hostname) LIKE ? OR lower(primary_address) LIKE ? OR lower(public_ip) LIKE ?)
+		AND (? = '' OR (? = 'online' AND online = 1) OR (? = 'offline' AND online = 0))
+		ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
+	`, search, pattern, pattern, pattern, status, status, status, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -149,9 +160,47 @@ func (s *SQLiteStore) ListAgentsPage(limit, offset int) ([]*models.Agent, error)
 }
 
 func (s *SQLiteStore) CountAgents() (int, error) {
+	return s.CountAgentsFiltered("", "")
+}
+
+func (s *SQLiteStore) CountAgentsFiltered(search, status string) (int, error) {
+	search = strings.ToLower(strings.TrimSpace(search))
+	pattern := "%" + search + "%"
 	var count int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM agents`).Scan(&count)
+	err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM agents
+		WHERE (? = '' OR lower(hostname) LIKE ? OR lower(primary_address) LIKE ? OR lower(public_ip) LIKE ?)
+		AND (? = '' OR (? = 'online' AND online = 1) OR (? = 'offline' AND online = 0))
+	`, search, pattern, pattern, pattern, status, status, status).Scan(&count)
 	return count, err
+}
+
+func (s *SQLiteStore) ListAgentsByIDs(ids []string) ([]*models.Agent, error) {
+	if len(ids) == 0 {
+		return []*models.Agent{}, nil
+	}
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := s.db.Query(fmt.Sprintf(`
+		SELECT id, hostname, version, addresses, primary_address, capabilities, public_ip, country_code, region, city, timezone, as_name, isp,
+		       token_hash, instance_id, online, last_seen, created_at, updated_at
+		FROM agents WHERE id IN (%s)
+	`, placeholders(len(ids))), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	agents := make([]*models.Agent, 0)
+	for rows.Next() {
+		agent, err := scanAgent(rows)
+		if err != nil {
+			return nil, err
+		}
+		agents = append(agents, agent)
+	}
+	return agents, rows.Err()
 }
 
 func (s *SQLiteStore) UpdateAgentStatus(id string, online bool, lastSeen time.Time) error {

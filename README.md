@@ -369,12 +369,13 @@ The dashboard and management endpoints use a seven-day `HttpOnly`, `SameSite=Str
 | `POST` | `/api/auth/login` | Create an admin session |
 | `POST` | `/api/auth/logout` | Revoke the current admin session |
 | `PUT` | `/api/auth/account` | Change admin email/password and rotate the session |
+| `GET` | `/api/overview` | Get bounded dashboard counts, problem links, and recently offline agents |
 | `POST` | `/api/agents/register` | Create and return a reusable agent enrollment token |
 | `GET` | `/api/agents` | List agents; supports `page` and `page_size` pagination parameters |
 | `GET` | `/api/agents/{id}` | Get an agent |
 | `DELETE` | `/api/agents/{id}` | Delete an agent |
 | `POST` | `/api/links` | Create a link |
-| `GET` | `/api/links` | List links and direction summaries |
+| `GET` | `/api/links` | List links and direction summaries; supports server-side pagination, search, status/agent filters, and sorting |
 | `GET` | `/api/links/{id}` | Get a link |
 | `PUT` | `/api/links/{id}` | Update a link |
 | `DELETE` | `/api/links/{id}` | Delete a link |
@@ -395,6 +396,14 @@ Links can be deleted from the Links page after confirmation; deletion also remov
 Deleting an agent also disconnects it and transactionally removes directions and probe history that reference it. A link left without directions is removed as part of the same transaction.
 
 The Agents page loads 20 records at a time and lets the user select 10, 20, 50, or 100 rows. The paginated API response includes `agents`, `page`, `page_size`, `total`, and `total_pages`; `page_size` is capped at 100. Calling `/api/agents` without pagination parameters retains the original array response for existing integrations.
+
+Overview uses `/api/overview` and never downloads the complete agent/link inventory. It refreshes every 15 seconds and returns aggregate counts plus at most 10 problem links and 10 recently offline agents by default. `problem_limit` can be set from 1 to 50.
+
+The Links page uses server-side pagination and refreshes only the current page every 30 seconds. It defaults to 20 links per page, with 10, 20, 50, and 100-row options. Search covers link names, descriptions, endpoint hostnames, and target addresses. The page also supports status and endpoint-agent filters plus problem-first, name, latency, loss, and recency sorting. Filter, sort, and page state are retained in the URL.
+
+For paginated API access, pass `page` or `page_size` to `/api/links`. Optional parameters are `search`, `status` (`healthy`, `degraded`, `down`, or `inactive`), `agent_id`, `source_agent_id`, `destination_agent_id`, `sort` (`status`, `name`, `latency`, `loss`, or `updated`), and `order` (`asc` or `desc`). The response contains `links`, `page`, `page_size`, `total`, and `total_pages`; page size is capped at 100. Calling `/api/links` without list parameters preserves the legacy array response.
+
+Link status is derived from source-agent availability and the latest enabled ping sample. `Inactive` means no source direction is online, `Down` means an active direction reports 100% loss, `Degraded` means partial loss, a pending first ping, or only some directions online, and `Healthy` means all directions are online without packet loss. Ping-disabled online directions do not wait for a ping result.
 
 A link already contains both A→B and B→A directions; do not create a second reversed link for the same pair. The Links page shows the latest latency and packet loss for both directions. Open a link to inspect latency history and MTR results.
 

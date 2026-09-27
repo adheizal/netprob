@@ -176,6 +176,8 @@ The E2E script must stop only processes recorded in its own PID files. Never add
 24. Open SQLite with WAL, a five-second busy timeout, and foreign-key enforcement. Agent deletion must transactionally remove related history and directions, and startup migrations must clean legacy orphans.
 25. Link-list and MTR-history handlers must use bounded bulk queries rather than per-direction or per-run N+1 reads.
 26. The Agents UI uses server-side pagination. `/api/agents` without query parameters retains its array response; requests with `page` or `page_size` return pagination metadata and cap page size at 100.
+27. Overview uses a dedicated bounded summary endpoint: aggregate inventory counts plus short problem-link and offline-agent lists. Its periodic refresh must never load complete inventory collections.
+28. The Links UI uses server-side pagination, search, status/agent filtering, and sorting. Hydrate directions, endpoint metadata, and latest ping only for the current page, cap page size at 100, persist list state in the URL, and preserve the legacy array response for an unparameterized `/api/links` request.
 
 ## Code Quality
 

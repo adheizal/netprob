@@ -49,6 +49,21 @@ func (s *SQLiteStore) GetLatestPingResult(directionID string) (*models.PingResul
 }
 
 func (s *SQLiteStore) ListLatestPingResults() (map[string]*models.PingResult, error) {
+	return s.ListLatestPingResultsByDirectionIDs(nil)
+}
+
+func (s *SQLiteStore) ListLatestPingResultsByDirectionIDs(directionIDs []string) (map[string]*models.PingResult, error) {
+	where := ""
+	args := make([]any, 0, len(directionIDs))
+	if directionIDs != nil {
+		if len(directionIDs) == 0 {
+			return map[string]*models.PingResult{}, nil
+		}
+		where = " AND p.direction_id IN (" + placeholders(len(directionIDs)) + ")"
+		for _, id := range directionIDs {
+			args = append(args, id)
+		}
+	}
 	rows, err := s.db.Query(`
 		SELECT p.id, p.direction_id, p.source_agent_id, p.destination_agent_id, p.timestamp,
 			p.min_rtt_ms, p.avg_rtt_ms, p.max_rtt_ms, p.jitter_ms, p.packet_loss_percent,
@@ -59,7 +74,7 @@ func (s *SQLiteStore) ListLatestPingResults() (map[string]*models.PingResult, er
 			WHERE newest.direction_id = p.direction_id
 			ORDER BY newest.timestamp DESC, newest.id DESC LIMIT 1
 		)
-	`)
+	`+where, args...)
 	if err != nil {
 		return nil, err
 	}

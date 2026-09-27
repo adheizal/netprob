@@ -10,6 +10,7 @@ import (
 
 	"netprob/internal/auth"
 	"netprob/internal/models"
+	"netprob/internal/storage"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -67,7 +68,13 @@ func (s *APIServer) HandleRegisterAgent(w http.ResponseWriter, r *http.Request) 
 func (s *APIServer) HandleListAgents(w http.ResponseWriter, r *http.Request) {
 	pageValue := r.URL.Query().Get("page")
 	pageSizeValue := r.URL.Query().Get("page_size")
-	if pageValue != "" || pageSizeValue != "" {
+	search := r.URL.Query().Get("search")
+	status := r.URL.Query().Get("status")
+	if status != "" && status != "online" && status != "offline" {
+		http.Error(w, "status must be online or offline", http.StatusBadRequest)
+		return
+	}
+	if pageValue != "" || pageSizeValue != "" || search != "" || status != "" {
 		page, pageSize := 1, 20
 		var err error
 		if pageValue != "" {
@@ -85,7 +92,7 @@ func (s *APIServer) HandleListAgents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		total, err := s.store.DB.CountAgents()
+		total, err := s.store.DB.CountAgentsFiltered(search, status)
 		if err != nil {
 			writeInternalError(w, err, "failed to count agents")
 			return
@@ -93,7 +100,7 @@ func (s *APIServer) HandleListAgents(w http.ResponseWriter, r *http.Request) {
 		totalPages := (total + pageSize - 1) / pageSize
 		agents := make([]*models.Agent, 0)
 		if page <= totalPages {
-			agents, err = s.store.DB.ListAgentsPage(pageSize, (page-1)*pageSize)
+			agents, err = s.store.DB.ListAgentsPageFiltered(pageSize, (page-1)*pageSize, search, status)
 			if err != nil {
 				writeInternalError(w, err, "failed to list agents")
 				return
@@ -168,40 +175,144 @@ func (s *APIServer) HandleCreateLink(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *APIServer) HandleListLinks(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	if query.Get("page") != "" || query.Get("page_size") != "" || query.Get("search") != "" ||
+		query.Get("status") != "" || query.Get("agent_id") != "" || query.Get("source_agent_id") != "" ||
+		query.Get("destination_agent_id") != "" || query.Get("sort") != "" || query.Get("order") != "" {
+		s.handleListLinksPage(w, r)
+		return
+	}
+
 	links, err := s.store.DB.ListLinks()
 	if err != nil {
 		writeInternalError(w, err, "failed to list links")
 		return
 	}
-	directions, err := s.store.DB.ListDirections()
+	items := make([]storage.LinkListItem, len(links))
+	for i, link := range links {
+		items[i] = storage.LinkListItem{Link: link}
+	}
+	result, err := s.hydrateLinkItems(items)
 	if err != nil {
-		writeInternalError(w, err, "failed to list directions")
+		writeInternalError(w, err, "failed to load link summaries")
 		return
 	}
-	agents, err := s.store.DB.ListAgents()
-	if err != nil {
-		writeInternalError(w, err, "failed to list agents")
+	json.NewEncoder(w).Encode(result)
+}
+
+func (s *APIServer) handleListLinksPage(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	page, pageSize := 1, 20
+	var err error
+	if value := query.Get("page"); value != "" {
+		page, err = strconv.Atoi(value)
+		if err != nil || page < 1 {
+			http.Error(w, "page must be a positive integer", http.StatusBadRequest)
+			return
+		}
+	}
+	if value := query.Get("page_size"); value != "" {
+		pageSize, err = strconv.Atoi(value)
+		if err != nil || pageSize < 1 || pageSize > 100 {
+			http.Error(w, "page_size must be between 1 and 100", http.StatusBadRequest)
+			return
+		}
+	}
+	status := query.Get("status")
+	if status != "" && status != "healthy" && status != "degraded" && status != "down" && status != "inactive" {
+		http.Error(w, "status must be healthy, degraded, down, or inactive", http.StatusBadRequest)
 		return
 	}
-	latestPings, err := s.store.DB.ListLatestPingResults()
-	if err != nil {
-		writeInternalError(w, err, "failed to load current ping metrics")
+	sortBy := query.Get("sort")
+	if sortBy != "" && sortBy != "status" && sortBy != "name" && sortBy != "latency" && sortBy != "loss" && sortBy != "updated" {
+		http.Error(w, "sort must be status, name, latency, loss, or updated", http.StatusBadRequest)
+		return
+	}
+	order := query.Get("order")
+	if order != "" && order != "asc" && order != "desc" {
+		http.Error(w, "order must be asc or desc", http.StatusBadRequest)
 		return
 	}
 
+	items, total, err := s.store.DB.ListLinksPage(storage.LinkListOptions{
+		Limit: pageSize, Offset: (page - 1) * pageSize, Search: query.Get("search"), Status: status,
+		AgentID: query.Get("agent_id"), SourceAgentID: query.Get("source_agent_id"),
+		DestinationAgentID: query.Get("destination_agent_id"), Sort: sortBy, Order: order,
+	})
+	if err != nil {
+		writeInternalError(w, err, "failed to list links")
+		return
+	}
+	links, err := s.hydrateLinkItems(items)
+	if err != nil {
+		writeInternalError(w, err, "failed to load link summaries")
+		return
+	}
+	totalPages := (total + pageSize - 1) / pageSize
+	json.NewEncoder(w).Encode(linkPageResponse{Links: links, Page: page, PageSize: pageSize, Total: total, TotalPages: totalPages})
+}
+
+func (s *APIServer) hydrateLinkItems(items []storage.LinkListItem) ([]linkWithAgents, error) {
+	linkIDs := make([]string, len(items))
+	for i, item := range items {
+		linkIDs[i] = item.Link.ID
+	}
+	var directions []*models.Direction
+	var err error
+	if len(linkIDs) > 500 {
+		// The legacy unpaginated endpoint can exceed SQLite's bind-variable
+		// limit. Keep its old full-inventory behavior while paginated callers
+		// remain scoped to the current page.
+		directions, err = s.store.DB.ListDirections()
+	} else {
+		directions, err = s.store.DB.ListDirectionsByLinkIDs(linkIDs)
+	}
+	if err != nil {
+		return nil, err
+	}
+	agentIDSet := make(map[string]struct{})
+	directionIDs := make([]string, 0, len(directions))
+	directionsByLink := make(map[string][]*models.Direction)
+	for _, direction := range directions {
+		directionsByLink[direction.LinkID] = append(directionsByLink[direction.LinkID], direction)
+		agentIDSet[direction.SourceAgentID] = struct{}{}
+		agentIDSet[direction.DestinationAgentID] = struct{}{}
+		directionIDs = append(directionIDs, direction.ID)
+	}
+	agentIDs := make([]string, 0, len(agentIDSet))
+	for id := range agentIDSet {
+		agentIDs = append(agentIDs, id)
+	}
+	var agents []*models.Agent
+	if len(agentIDs) > 500 {
+		agents, err = s.store.DB.ListAgents()
+	} else {
+		agents, err = s.store.DB.ListAgentsByIDs(agentIDs)
+	}
+	if err != nil {
+		return nil, err
+	}
+	var latestPings map[string]*models.PingResult
+	if len(directionIDs) > 500 {
+		latestPings, err = s.store.DB.ListLatestPingResults()
+	} else {
+		latestPings, err = s.store.DB.ListLatestPingResultsByDirectionIDs(directionIDs)
+	}
+	if err != nil {
+		return nil, err
+	}
 	agentsByID := make(map[string]*models.Agent, len(agents))
 	for _, agent := range agents {
 		agentsByID[agent.ID] = agent
 	}
-	directionsByLink := make(map[string][]*models.Direction)
-	for _, direction := range directions {
-		directionsByLink[direction.LinkID] = append(directionsByLink[direction.LinkID], direction)
-	}
 
-	result := make([]linkWithAgents, len(links))
-	for i, l := range links {
-		result[i] = linkWithAgents{Link: l, Directions: make([]directionSummary, 0)}
-		for _, d := range directionsByLink[l.ID] {
+	result := make([]linkWithAgents, len(items))
+	for i, item := range items {
+		result[i] = linkWithAgents{
+			Link: item.Link, Directions: make([]directionSummary, 0), Status: item.Status,
+			MaxLoss: item.MaxLoss, MaxLatency: item.MaxLatency,
+		}
+		for _, d := range directionsByLink[item.Link.ID] {
 			srcAgent := agentsByID[d.SourceAgentID]
 			destAgent := agentsByID[d.DestinationAgentID]
 			srcSummary := &agentSummary{ID: d.SourceAgentID, Online: false}
@@ -240,7 +351,47 @@ func (s *APIServer) HandleListLinks(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
-	json.NewEncoder(w).Encode(result)
+	return result, nil
+}
+
+func (s *APIServer) HandleOverview(w http.ResponseWriter, r *http.Request) {
+	limit := 10
+	if value := r.URL.Query().Get("problem_limit"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > 50 {
+			http.Error(w, "problem_limit must be between 1 and 50", http.StatusBadRequest)
+			return
+		}
+		limit = parsed
+	}
+	agentCounts, err := s.store.DB.CountAgentStatuses()
+	if err != nil {
+		writeInternalError(w, err, "failed to count agents")
+		return
+	}
+	linkCounts, err := s.store.DB.CountLinkStatuses()
+	if err != nil {
+		writeInternalError(w, err, "failed to count links")
+		return
+	}
+	problemItems, _, err := s.store.DB.ListLinksPage(storage.LinkListOptions{Limit: limit, Status: "problem", Sort: "status"})
+	if err != nil {
+		writeInternalError(w, err, "failed to list problem links")
+		return
+	}
+	problemLinks, err := s.hydrateLinkItems(problemItems)
+	if err != nil {
+		writeInternalError(w, err, "failed to load problem links")
+		return
+	}
+	offlineAgents, err := s.store.DB.ListAgentsPageFiltered(limit, 0, "", "offline")
+	if err != nil {
+		writeInternalError(w, err, "failed to list offline agents")
+		return
+	}
+	json.NewEncoder(w).Encode(overviewResponse{
+		Agents: agentCounts, Links: linkCounts, ProblemLinks: problemLinks, OfflineAgents: offlineAgents,
+	})
 }
 
 func (s *APIServer) HandleGetLink(w http.ResponseWriter, r *http.Request) {

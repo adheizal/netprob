@@ -1,150 +1,130 @@
 import { useEffect, useState } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
-import { Network, Users, CheckCircle, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Network, Users, XCircle } from 'lucide-react'
 import { api } from '../api'
-import type { Agent, LinkWithAgents } from '../types'
+import type { LinkStatus, OverviewData } from '../types'
+
+const statusStyles: Record<LinkStatus, string> = {
+  healthy: 'bg-green-100 text-green-800',
+  degraded: 'bg-amber-100 text-amber-800',
+  down: 'bg-red-100 text-red-800',
+  inactive: 'bg-gray-100 text-gray-600',
+}
 
 export default function Overview() {
-  const [agents, setAgents] = useState<Agent[]>([])
-  const [links, setLinks] = useState<LinkWithAgents[]>([])
+  const [data, setData] = useState<OverviewData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    async function loadData() {
+    let active = true
+    async function loadData(initial = false) {
+      if (initial) setLoading(true)
       try {
-        const [agentsData, linksData] = await Promise.all([api.listAgents(), api.listLinks()])
-        setAgents(agentsData)
-        setLinks(linksData)
+        const response = await api.getOverview(10)
+        if (!active) return
+        setData(response)
+        setError('')
       } catch (err) {
-        console.error('Failed to load data:', err)
+        if (active) setError(err instanceof Error ? err.message : 'Failed to load overview')
       } finally {
-        setLoading(false)
+        if (active && initial) setLoading(false)
       }
     }
-    loadData()
+    loadData(true)
+    const refresh = window.setInterval(() => loadData(), 15_000)
+    return () => {
+      active = false
+      window.clearInterval(refresh)
+    }
   }, [])
 
   if (loading) return <div className="p-6">Loading...</div>
-
-  const onlineAgents = agents.filter(a => a.online).length
-  const offlineAgents = agents.length - onlineAgents
-  const totalLinks = links.length
-
-  const allDirections = links.flatMap(l => l.directions)
-  const onlineDirs = allDirections.filter(d => d.online).length
+  if (!data) return <div className="p-6 text-red-600">{error || 'Overview is unavailable.'}</div>
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">NetProb Overview</h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white rounded-lg shadow p-4 flex items-center gap-3">
-          <Users className="w-8 h-8 text-blue-500" />
-          <div>
-            <div className="text-2xl font-bold">{agents.length}</div>
-            <div className="text-sm text-gray-500">Total Agents</div>
-          </div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 flex items-center gap-3">
-          <CheckCircle className="w-8 h-8 text-green-500" />
-          <div>
-            <div className="text-2xl font-bold text-green-600">{onlineAgents}</div>
-            <div className="text-sm text-gray-500">Online Agents</div>
-          </div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 flex items-center gap-3">
-          <XCircle className="w-8 h-8 text-red-500" />
-          <div>
-            <div className="text-2xl font-bold text-red-600">{offlineAgents}</div>
-            <div className="text-sm text-gray-500">Offline Agents</div>
-          </div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 flex items-center gap-3">
-          <Network className="w-8 h-8 text-purple-500" />
-          <div>
-            <div className="text-2xl font-bold">{totalLinks}</div>
-            <div className="text-sm text-gray-500">Links</div>
-          </div>
-        </div>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-800">NetProb Overview</h1>
+        <span className="text-xs text-gray-400">Auto-refreshes every 15 seconds</span>
       </div>
 
-      <h2 className="text-xl font-semibold text-gray-800 mb-4">Recent Links</h2>
-      {links.length === 0 ? (
-        <p className="text-gray-500">No links configured.</p>
-      ) : (
-        <div className="space-y-3">
-          {links.map(link => {
-            const online = onlineDirs > 0
-            const firstDir = link.directions[0]
-            const latestPing = firstDir?.latest_ping
-            return (
-              <RouterLink key={link.id} to={`/links/${link.id}`} className="block">
-                <div className="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow">
-                  <div className="flex justify-between items-start">
+      {error && <div className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Refresh failed: {error}</div>}
+
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <RouterLink to="/agents" className="flex items-center gap-3 rounded-lg bg-white p-4 shadow hover:shadow-md">
+          <Users className="h-8 w-8 text-blue-500" />
+          <div><div className="text-2xl font-bold">{data.agents.total}</div><div className="text-sm text-gray-500">Total Agents</div></div>
+        </RouterLink>
+        <RouterLink to="/agents" className="flex items-center gap-3 rounded-lg bg-white p-4 shadow hover:shadow-md">
+          <CheckCircle className="h-8 w-8 text-green-500" />
+          <div><div className="text-2xl font-bold text-green-600">{data.agents.online}</div><div className="text-sm text-gray-500">Online Agents</div></div>
+        </RouterLink>
+        <RouterLink to="/agents" className="flex items-center gap-3 rounded-lg bg-white p-4 shadow hover:shadow-md">
+          <XCircle className="h-8 w-8 text-red-500" />
+          <div><div className="text-2xl font-bold text-red-600">{data.agents.offline}</div><div className="text-sm text-gray-500">Offline Agents</div></div>
+        </RouterLink>
+        <RouterLink to="/links" className="flex items-center gap-3 rounded-lg bg-white p-4 shadow hover:shadow-md">
+          <Network className="h-8 w-8 text-purple-500" />
+          <div><div className="text-2xl font-bold">{data.links.total}</div><div className="text-sm text-gray-500">Total Links</div></div>
+        </RouterLink>
+      </div>
+
+      <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
+        {(['healthy', 'degraded', 'down', 'inactive'] as LinkStatus[]).map(status => (
+          <RouterLink key={status} to={`/links?status=${status}`} className="rounded-lg bg-white p-3 shadow-sm hover:shadow">
+            <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{status}</div>
+            <div className="mt-1 text-xl font-semibold">{data.links[status]}</div>
+          </RouterLink>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-xl font-semibold text-gray-800"><AlertTriangle className="h-5 w-5 text-amber-500" />Problem Links</h2>
+            <RouterLink to="/links?sort=status" className="text-sm text-blue-600 hover:underline">View all links</RouterLink>
+          </div>
+          {data.problem_links.length === 0 ? (
+            <div className="rounded-lg bg-white p-5 text-sm text-green-700 shadow">No link problems detected.</div>
+          ) : (
+            <div className="space-y-3">
+              {data.problem_links.map(link => (
+                <RouterLink key={link.id} to={`/links/${link.id}`} className="block rounded-lg bg-white p-4 shadow hover:shadow-md">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="font-semibold text-gray-800">{link.name}</h3>
-                      {link.description && <p className="text-sm text-gray-500">{link.description}</p>}
-                      <div className="mt-2 flex gap-4 text-sm text-gray-600">
-                        {link.directions.map(dir => (
-                          <span key={dir.id}>
-                            {dir.source_agent?.hostname || dir.source_agent_id} → {dir.dest_agent?.hostname || dir.destination_agent_id}
-                          </span>
-                        ))}
+                      <div className="font-semibold text-gray-800">{link.name}</div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        {link.directions.map(direction => `${direction.source_agent?.hostname || direction.source_agent_id} → ${direction.dest_agent?.hostname || direction.destination_agent_id}`).join(' · ')}
                       </div>
                     </div>
-                    <div className={`w-3 h-3 rounded-full ${online ? 'bg-green-500' : 'bg-red-500'}`} />
+                    {link.status && <span className={`rounded-full px-2 py-1 text-xs capitalize ${statusStyles[link.status]}`}>{link.status}</span>}
                   </div>
-                  {latestPing && (
-                    <div className="mt-2 text-sm text-gray-600">
-                      Latest latency: {latestPing.avg_rtt_ms?.toFixed(1) ?? 'N/A'} ms
-                      {' | '}
-                      Packet loss: {latestPing.packet_loss_percent?.toFixed(1)}%
-                    </div>
-                  )}
-                </div>
-              </RouterLink>
-            )
-          })}
-        </div>
-      )}
-
-      <h2 className="text-xl font-semibold text-gray-800 mb-4 mt-8">All Agents</h2>
-      {agents.length === 0 ? (
-        <p className="text-gray-500">No agents registered.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full bg-white rounded-lg shadow overflow-hidden">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Status</th>
-                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Hostname</th>
-                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Version</th>
-                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Addresses</th>
-                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Region</th>
-                <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Last Seen</th>
-              </tr>
-            </thead>
-            <tbody>
-              {agents.map(agent => (
-                <tr key={agent.id} className="border-t border-gray-100">
-                  <td className="px-4 py-2">
-                    {agent.online ? (
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                    ) : (
-                      <XCircle className="w-5 h-5 text-gray-400" />
-                    )}
-                  </td>
-                  <td className="px-4 py-2 font-medium">{agent.hostname}</td>
-                  <td className="px-4 py-2">{agent.version}</td>
-                  <td className="px-4 py-2 font-mono text-sm">{agent.primary_address || '—'}</td>
-                  <td className="px-4 py-2">{agent.location.region || '—'}</td>
-                  <td className="px-4 py-2">{agent.last_seen ? new Date(agent.last_seen).toLocaleString() : 'Never'}</td>
-                </tr>
+                </RouterLink>
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            </div>
+          )}
+        </section>
+
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-gray-800">Recently Offline Agents</h2>
+            <RouterLink to="/agents" className="text-sm text-blue-600 hover:underline">View all agents</RouterLink>
+          </div>
+          {data.offline_agents.length === 0 ? (
+            <div className="rounded-lg bg-white p-5 text-sm text-green-700 shadow">All agents are online.</div>
+          ) : (
+            <div className="overflow-hidden rounded-lg bg-white shadow">
+              {data.offline_agents.map(agent => (
+                <div key={agent.id} className="flex items-center justify-between border-b border-gray-100 px-4 py-3 last:border-0">
+                  <div><div className="font-medium text-gray-800">{agent.hostname}</div><div className="text-xs text-gray-500">{agent.primary_address || 'No primary address'}</div></div>
+                  <div className="text-right text-xs text-gray-500">{agent.last_seen ? new Date(agent.last_seen).toLocaleString() : 'Never seen'}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   )
 }

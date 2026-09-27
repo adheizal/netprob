@@ -95,8 +95,28 @@ export interface LinkWithAgents {
   name: string
   description: string
   directions: DirectionSummary[]
+  status?: LinkStatus
+  max_loss_percent?: number
+  max_latency_ms?: number
   created_at: string
   updated_at: string
+}
+
+export type LinkStatus = 'healthy' | 'degraded' | 'down' | 'inactive'
+
+export interface LinkPage {
+  links: LinkWithAgents[]
+  page: number
+  page_size: number
+  total: number
+  total_pages: number
+}
+
+export interface OverviewData {
+  agents: { total: number; online: number; offline: number }
+  links: { total: number; healthy: number; degraded: number; down: number; inactive: number }
+  problem_links: LinkWithAgents[]
+  offline_agents: Agent[]
 }
 
 export interface DirectionSummary {

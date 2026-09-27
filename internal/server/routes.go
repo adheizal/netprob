@@ -17,6 +17,7 @@ func (s *APIServer) routes() {
 	r.Group(func(r chi.Router) {
 		r.Use(s.RequireAdmin)
 		r.Put("/api/auth/account", s.HandleUpdateAdminAccount)
+		r.Get("/api/overview", s.HandleOverview)
 
 		// Agent registration API (browser-side management)
 		r.Post("/api/agents/register", s.HandleRegisterAgent)

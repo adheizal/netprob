@@ -1,4 +1,4 @@
-import type { Agent, AgentPage, AuthSession, Link, PingResult, MTRRun, RetentionSettings, RetentionSettingsUpdate, SecuritySettings } from './types'
+import type { Agent, AgentPage, AuthSession, Link, LinkPage, LinkStatus, MTRRun, OverviewData, PingResult, RetentionSettings, RetentionSettingsUpdate, SecuritySettings } from './types'
 
 const API_BASE = import.meta.env.DEV ? '' : ''
 
@@ -31,8 +31,12 @@ export const api = {
   registerAgent: (data: Partial<Agent>): Promise<{ id: string; token: string }> =>
     fetchAPI('/api/agents/register', { method: 'POST', body: JSON.stringify(data) }),
   listAgents: (): Promise<Agent[]> => fetchAPI('/api/agents'),
-  listAgentsPage: (page: number, pageSize: number): Promise<AgentPage> =>
-    fetchAPI(`/api/agents?page=${page}&page_size=${pageSize}`),
+  listAgentsPage: (page: number, pageSize: number, search = '', status = ''): Promise<AgentPage> => {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+    if (search) params.set('search', search)
+    if (status) params.set('status', status)
+    return fetchAPI(`/api/agents?${params}`)
+  },
   getAgent: (id: string): Promise<Agent> => fetchAPI(`/api/agents/${id}`),
   deleteAgent: (id: string): Promise<void> => fetchAPI(`/api/agents/${id}`, { method: 'DELETE' }),
 
@@ -40,6 +44,27 @@ export const api = {
   createLink: (data: { name: string; description?: string }): Promise<Link> =>
     fetchAPI('/api/links', { method: 'POST', body: JSON.stringify(data) }),
   listLinks: (): Promise<any[]> => fetchAPI('/api/links'),
+  listLinksPage: (options: {
+    page: number
+    pageSize: number
+    search?: string
+    status?: LinkStatus | ''
+    agentId?: string
+    sourceAgentId?: string
+    destinationAgentId?: string
+    sort?: 'status' | 'name' | 'latency' | 'loss' | 'updated'
+    order?: 'asc' | 'desc'
+  }): Promise<LinkPage> => {
+    const params = new URLSearchParams({ page: String(options.page), page_size: String(options.pageSize) })
+    if (options.search) params.set('search', options.search)
+    if (options.status) params.set('status', options.status)
+    if (options.agentId) params.set('agent_id', options.agentId)
+    if (options.sourceAgentId) params.set('source_agent_id', options.sourceAgentId)
+    if (options.destinationAgentId) params.set('destination_agent_id', options.destinationAgentId)
+    if (options.sort) params.set('sort', options.sort)
+    if (options.order) params.set('order', options.order)
+    return fetchAPI(`/api/links?${params}`)
+  },
   getLink: (id: string): Promise<Link> => fetchAPI(`/api/links/${id}`),
   updateLink: (id: string, data: any): Promise<void> =>
     fetchAPI(`/api/links/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -62,6 +87,10 @@ export const api = {
   getMTRRuns: (linkId: string, directionId: string, limit?: number): Promise<MTRRun[]> =>
     fetchAPI(`/api/links/${linkId}/directions/${directionId}/mtr${limit ? `?limit=${limit}` : ''}`),
   getMTRRun: (id: string): Promise<MTRRun> => fetchAPI(`/api/mtr-runs/${id}`),
+
+  // Dashboard summary
+  getOverview: (problemLimit = 10): Promise<OverviewData> =>
+    fetchAPI(`/api/overview?problem_limit=${problemLimit}`),
 
   // Settings
   getRetentionSettings: (): Promise<RetentionSettings> => fetchAPI('/api/settings/retention'),

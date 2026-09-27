@@ -92,6 +92,8 @@ Do not hand-edit hashed assets under `internal/webui/dist/`.
 - Dispatch a direction to its source agent and derive direction online state from that source.
 - Encode empty API collections as JSON arrays.
 - Keep the unparameterized agents endpoint backward compatible as an array; paginated requests return metadata and must cap page size at 100.
+- Keep Overview bounded to aggregate counts and short problem/offline lists; never fetch the full agent and link inventory for its periodic refresh.
+- Keep the unparameterized links endpoint backward compatible as an array. The dashboard must use server-side link pagination, filtering, and sorting, hydrate only the current page, and cap page size at 100.
 - Preserve SPA fallback for client-side routes.
 - Save ping and complete MTR results in SQLite. When VictoriaMetrics is configured, mirror enriched ping metrics, bounded MTR summaries, failed-ping status, latest MTR route metadata and numeric per-hop measurements, and periodic controller inventory. Never put error text or numeric measurements in labels.
 - Persist a parseable ping summary even when `ping` exits non-zero for total packet loss; keep unavailable RTT fields null.

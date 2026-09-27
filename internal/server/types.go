@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"netprob/internal/models"
+	"netprob/internal/storage"
 )
 
 type registerAgentRequest struct {
@@ -24,6 +25,21 @@ type agentPageResponse struct {
 	PageSize   int             `json:"page_size"`
 	Total      int             `json:"total"`
 	TotalPages int             `json:"total_pages"`
+}
+
+type linkPageResponse struct {
+	Links      []linkWithAgents `json:"links"`
+	Page       int              `json:"page"`
+	PageSize   int              `json:"page_size"`
+	Total      int              `json:"total"`
+	TotalPages int              `json:"total_pages"`
+}
+
+type overviewResponse struct {
+	Agents        storage.AgentStatusCounts `json:"agents"`
+	Links         storage.LinkStatusCounts  `json:"links"`
+	ProblemLinks  []linkWithAgents          `json:"problem_links"`
+	OfflineAgents []*models.Agent           `json:"offline_agents"`
 }
 
 type createLinkRequest struct {
@@ -81,6 +97,9 @@ type authSessionResponse struct {
 type linkWithAgents struct {
 	*models.Link
 	Directions []directionSummary `json:"directions"`
+	Status     string             `json:"status,omitempty"`
+	MaxLoss    *float64           `json:"max_loss_percent,omitempty"`
+	MaxLatency *float64           `json:"max_latency_ms,omitempty"`
 }
 
 type directionSummary struct {

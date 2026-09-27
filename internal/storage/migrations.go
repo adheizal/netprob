@@ -33,7 +33,10 @@ var agentProviderSchema string
 //go:embed migrations/009_cleanup_orphans.sql
 var cleanupOrphansSchema string
 
-const schemaVersion = 9
+//go:embed migrations/010_dashboard_indexes.sql
+var dashboardIndexesSchema string
+
+const schemaVersion = 10
 
 func (s *SQLiteStore) ApplyMigrations(db *sql.DB) error {
 	var version int
@@ -89,6 +92,8 @@ func loadMigration(version int) (string, error) {
 		return agentProviderSchema, nil
 	case 9:
 		return cleanupOrphansSchema, nil
+	case 10:
+		return dashboardIndexesSchema, nil
 	default:
 		return "", fmt.Errorf("unknown migration version %d", version)
 	}

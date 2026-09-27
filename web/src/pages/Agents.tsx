@@ -35,7 +35,6 @@ export default function Agents() {
 
   useEffect(() => {
     let active = true
-    setLoading(true)
     api.listAgentsPage(page, pageSize)
       .then(data => {
         if (!active) return
@@ -216,6 +215,7 @@ export default function Agents() {
                 <select
                   value={pageSize}
                   onChange={event => {
+                    setLoading(true)
                     setPageSize(Number(event.target.value))
                     setPage(1)
                   }}
@@ -229,7 +229,7 @@ export default function Agents() {
               <span>Page {page} of {Math.max(totalPages, 1)}</span>
               <button
                 type="button"
-                onClick={() => setPage(current => current - 1)}
+                onClick={() => { setLoading(true); setPage(current => current - 1) }}
                 disabled={page <= 1}
                 aria-label="Previous page"
                 className="rounded border border-gray-300 p-1.5 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
@@ -238,7 +238,7 @@ export default function Agents() {
               </button>
               <button
                 type="button"
-                onClick={() => setPage(current => current + 1)}
+                onClick={() => { setLoading(true); setPage(current => current + 1) }}
                 disabled={totalPages === 0 || page >= totalPages}
                 aria-label="Next page"
                 className="rounded border border-gray-300 p-1.5 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
